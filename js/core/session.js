@@ -102,6 +102,17 @@
     step('music', 0, 'em curso…');
     state.music = await MM.analyzeMusic(stems.filter((s) => !s.removed), sr, (p) => step('music', p, 'em curso…'));
     step('music', 1, `${state.music.bpm} BPM · ${state.music.key}`);
+    // reconhecimento do estilo pelo treino da biblioteca (se houver pelo menos 2 estilos treinados)
+    if (MM.styles && MM.styles.model) {
+      try {
+        step('music', 1, 'a comparar com os estilos treinados…');
+        const sug = await MM.styles.suggestForSession(state);
+        state.music.styleSuggestion = sug ? { top: sug.top, all: sug.all, heuristic: state.music.genre } : null;
+        const prof = sug && MM.styles.profile(sug.top.style);
+        if (sug && sug.top.p >= 0.55 && prof && prof.n >= 2) { state.music.genre = sug.top.style; state.music.genreConf = sug.top.p; state.music.genreSource = 'treino'; }
+      } catch (e) { console.warn('sugestão de estilo', e); }
+      step('music', 1, `${state.music.bpm} BPM · ${state.music.key}`);
+    }
     const pd = MM.proposeDirection(state);
     state.directionAI = Object.assign({}, pd.dir); state.direction = Object.assign({}, pd.dir); state.directionReasons = pd.reasons;
     const g = MM.GENRES[state.music.genre];

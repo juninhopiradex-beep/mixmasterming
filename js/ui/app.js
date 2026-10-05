@@ -23,6 +23,7 @@
     App.recent = await MM.listProjects();
     App.render();
     App.loop();
+    MM.styles.load().then(() => { MM.styles.loaded = true; if (App.view === 'styles') App.refresh(); });
   };
 
   App.ensureAudio = async function () {
@@ -43,7 +44,7 @@
     const mon = e.monitor;
     const hasRef = !!st.refBuffer;
     top.innerHTML = `
-      <div class="brand" ${App.hasSession() ? '' : 'data-view="home" style="cursor:pointer"'}>${UI.logo()}MixMind <small>AI Mixing & Mastering</small></div>
+      <div class="brand" ${App.hasSession() ? '' : 'data-view="home" style="cursor:pointer"'}>${UI.logo()}MixMind <small>AI Mixing & Mastering · v${MM.VERSION}</small></div>
       ${App.hasSession() ? `<div class="proj"><input class="proj-name" value="${UI.esc(st.project.name)}" spellcheck="false" title="Nome do projeto">
         ${vers.length ? `<select class="field" id="verSel" style="height:32px;width:auto;font-size:13px">${vers.map((v) => `<option value="${v.id}"${v.id === st.currentVersion ? ' selected' : ''}>${UI.esc(v.name)}${v.score ? ' · ' + v.score : ''}</option>`).join('')}</select>` : ''}</div>` : ''}
       <div class="spacer"></div>
@@ -56,6 +57,7 @@
           ${hasRef ? `<button data-mon="ref" class="${mon === 'ref' ? 'on' : ''}" title="4">Ref</button>` : ''}
         </div>
         <button class="lm ${e.lm ? 'on' : ''}" data-act="lm" title="Loudness match (L)">LM ${e.lm ? 'on' : 'off'}</button>
+        ${st.stems.some((x) => x.solo && !x.removed) ? `<button class="solo-clear" data-act="clearSolo" title="Desligar todos os solos">SOLO ✕</button>` : ''}
       </div>
       <span class="target-chip">${UI.fmtNum(st.master.target)} LUFS / ${UI.fmtNum(st.master.ceiling)} dBTP</span>
       <span class="status-pill ${App.busy ? 'busy' : dirty ? 'dirty' : ''}"><span class="dot"></span>${App.busy ? 'A processar…' : dirty ? 'Alterações por renderizar' : App.ready() ? 'Sincronizado' : 'Pronto para a IA'}</span>
@@ -70,21 +72,24 @@
   App.renderNav = function () {
     const nav = UI.$('.nav'), st = App.state;
     if (!nav) return;
-    if (!App.hasSession() && st.stage !== 'analyzing') { nav.style.display = 'none'; return; }
     nav.style.display = '';
+    if (!App.hasSession() && st.stage !== 'analyzing') {
+      nav.innerHTML = `<a data-view="home" class="${App.view === 'home' ? 'on' : ''}">${UI.icon('upload')}Início</a><a data-view="styles" class="${App.view === 'styles' ? 'on' : ''}">${UI.icon('brain')}Estilos · treino</a><a data-view="plugin" class="${App.view === 'plugin' ? 'on' : ''}">${UI.icon('plug')}MixMind Master</a><div class="spacer"></div><a data-view="settings" class="${App.view === 'settings' ? 'on' : ''}">${UI.icon('gear')}Definições</a>`;
+      return;
+    }
     const items = st.mode === 'master' ? NAV.filter(([k]) => ['master', 'compare', 'refs', 'export'].includes(k)) : NAV;
     const unres = (st.issues || []).filter((i) => !i.resolved).length;
     nav.innerHTML = items.map(([k, l, ic]) => {
       const dis = !App.hasSession() && k !== 'import';
       return `<a data-view="${k}" class="${App.view === k ? 'on' : ''}" ${dis ? 'style="opacity:.35;pointer-events:none"' : ''}>${UI.icon(ic)}${l}${k === 'import' && unres ? ` <span class="badge">${unres}</span>` : ''}</a>`;
-    }).join('') + `<span class="sep"></span><a data-view="plugin" class="${App.view === 'plugin' ? 'on' : ''}">${UI.icon('plug')}MixMind Master</a><div class="spacer"></div><a data-view="settings" class="${App.view === 'settings' ? 'on' : ''}">${UI.icon('gear')}Definições</a>`;
+    }).join('') + `<span class="sep"></span><a data-view="styles" class="${App.view === 'styles' ? 'on' : ''}">${UI.icon('brain')}Estilos</a><a data-view="plugin" class="${App.view === 'plugin' ? 'on' : ''}">${UI.icon('plug')}MixMind Master</a><div class="spacer"></div><a data-view="settings" class="${App.view === 'settings' ? 'on' : ''}">${UI.icon('gear')}Definições</a>`;
   };
 
   App.renderView = function () {
     const ws = UI.$('.workspace');
     if (App.curView && App.curView.unmount) App.curView.unmount(App);
     let id = App.view;
-    if (!App.hasSession() && !['settings', 'plugin'].includes(id)) id = 'home';
+    if (!App.hasSession() && !['settings', 'plugin', 'styles'].includes(id)) id = 'home';
     const v = MM.views[id] || MM.views.home;
     App.curView = v;
     ws.innerHTML = `<div class="view ${v.flush ? 'flush' : ''}">${v.render(App)}</div>`;
@@ -108,7 +113,7 @@
   // ---------- dock ----------
   App.renderDock = function () {
     const dk = UI.$('.dock');
-    if (!App.hasSession() || App.view === 'plugin') { dk.style.display = 'none'; return; }
+    if (!App.hasSession() || App.view === 'plugin' || App.view === 'styles') { dk.style.display = 'none'; return; }
     dk.style.display = '';
     dk.innerHTML = `
       <div class="tp">
@@ -339,6 +344,15 @@
       st.stage = 'review';
       const pm = await MM.measure(buf); st.metrics.mix = pm; st.metrics.orig = pm; st.master.premasterLufs = pm.lufs;
       st.mixPeaks = st.origPeaks = MM.peaks(D.channelsOf(buf), 900);
+      // estilo reconhecido pelo treino da biblioteca (se existir)
+      if (MM.styles && MM.styles.model) {
+        try {
+          const f = await MM.styles.masterFeatures(buf);
+          const pr = MM.styles.predict(f);
+          if (f.bpm) st.music.bpm = f.bpm;
+          if (pr.length && pr[0].p >= 0.55) { st.music.genre = pr[0].style; st.music.genreConf = pr[0].p; st.music.genreSource = 'treino'; UI.toast(`Estilo reconhecido pelo treino: ${pr[0].style} (${Math.round(pr[0].p * 100)} %).`, 'ok'); }
+        } catch (e) { console.warn(e); }
+      }
       App.engine.rebuild(st);
       App.view = 'plugin';
       App.busy = false;
@@ -496,6 +510,30 @@
     App.engine.rebuild(App.state); App.refresh(); UI.toast('Refeito: ' + l, 'ok', 1800);
   };
 
+  /** Solo / Mute com efeito imediato no motor; Alt/⌘+clique = solo exclusivo. */
+  App.toggleSM = function (s, what, exclusive) {
+    const st = App.state;
+    MM.commit(st, what === 'solo' ? 'Solo ' + s.label : 'Mute ' + s.label);
+    if (what === 'solo') {
+      const on = !s.solo;
+      if (exclusive) st.stems.forEach((x) => (x.solo = false));
+      s.solo = on;
+    } else { s.mute = !s.mute; st.dirty.mix = true; }
+    const g = App.engine.graph;
+    if (g && g.applyStem) st.stems.forEach((x) => g.applyStem(x));
+    App.syncSM();
+  };
+  App.clearSolo = function () { const st = App.state; MM.commit(st, 'Limpar solo'); st.stems.forEach((x) => (x.solo = false)); const g = App.engine.graph; if (g && g.applyStem) st.stems.forEach((x) => g.applyStem(x)); App.syncSM(); };
+  /** Atualiza todos os botões S/M visíveis sem redesenhar a vista. */
+  App.syncSM = function () {
+    App.state.stems.forEach((s) => {
+      UI.$$(`[data-ssolo="${s.id}"]`).forEach((b) => b.classList.toggle('on', !!s.solo));
+      UI.$$(`[data-smute="${s.id}"]`).forEach((b) => b.classList.toggle('on', !!s.mute));
+      const strip = UI.$(`[data-strip="${s.id}"]`); if (strip) strip.classList.toggle('muted-s', !!s.mute);
+    });
+    App.renderTop();
+  };
+
   // ---------- assistente ----------
   App.ask = function (text) {
     if (!text.trim()) return;
@@ -578,9 +616,16 @@
             App.setLoop(App.engine.loop ? null : s);
           },
           lm: () => { App.engine.setLM(!App.engine.lm); App.renderTop(); App.curView && App.curView.onMonitor && App.curView.onMonitor(App); },
-          undo: App.undo, redo: App.redo, ai: () => App.runAI(), update: () => App.runAI({ keepMix: true }), palette: App.palette,
+          undo: App.undo, redo: App.redo, ai: () => App.runAI(), clearSolo: App.clearSolo, update: () => App.runAI({ keepMix: true }), palette: App.palette,
         }[act];
         if (fn) { e.preventDefault(); fn(); }
+      }
+      const so = e.target.closest('[data-ssolo],[data-smute]');
+      if (so) {
+        e.preventDefault(); e.stopPropagation();
+        const s = App.stem(so.dataset.ssolo || so.dataset.smute);
+        if (s) App.toggleSM(s, so.dataset.ssolo ? 'solo' : 'mute', e.altKey || e.metaKey);
+        return;
       }
       const mon = e.target.closest('[data-mon]');
       if (mon) App.setMonitor(mon.dataset.mon);
@@ -611,8 +656,8 @@
       else if (e.key === 'ArrowRight') App.engine.seek(App.engine.position() + (e.shiftKey ? 1 : 5));
       else if (e.key === 'Home') App.engine.seek(0);
       else if (e.key === 'Escape') App.closeEditor && App.closeEditor();
-      else if (e.key.toLowerCase() === 'm' && App.stem()) App.change('Mute', () => { const s = App.stem(); s.mute = !s.mute; }, { allStems: true });
-      else if (e.key.toLowerCase() === 's' && App.stem()) App.change('Solo', () => { const s = App.stem(); s.solo = !s.solo; }, { allStems: true });
+      else if (e.key.toLowerCase() === 'm' && App.stem()) App.toggleSM(App.stem(), 'mute');
+      else if (e.key.toLowerCase() === 's' && App.stem()) App.toggleSM(App.stem(), 'solo', e.altKey);
     });
     // arrastar ficheiros para qualquer lado
     let dragN = 0;
@@ -623,6 +668,7 @@
       e.preventDefault(); dragN = 0;
       const d = UI.$('.drop'); if (d) d.classList.remove('over');
       if (e.target.closest && e.target.closest('[data-refdrop]')) return; // tratado pela vista
+      if (App.view === 'styles') { UI.toast('Larga os ficheiros numa das caixas: músicas finais ou stems pós-fader.', 'warn'); return; }
       const files = await App.filesFromDrop(e.dataTransfer);
       if (App.view === 'plugin' && files.length === 1) App.loadMasterFile(files[0]);
       else App.importFiles(files);
@@ -669,6 +715,7 @@
       ['Abrir sessão de demonstração', 'music', App.loadDemo, true],
       ['Masterizar uma mix stereo (MixMind Master)', 'plug', () => App.go('plugin'), true],
       ...NAV.map(([k, l, ic]) => ['Ir para ' + l, ic, () => App.go(k), App.hasSession()]),
+      ['Estilos · treinar com músicas', 'brain', () => App.go('styles'), true],
       ['Definições', 'gear', () => App.go('settings'), true],
       ['Novo projeto', 'file', () => { App.resetSession(); App.view = 'home'; App.render(); }, true],
     ].filter((c) => c[3]);

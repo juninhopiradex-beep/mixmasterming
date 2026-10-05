@@ -616,6 +616,10 @@
       Jazz: inR(80, 200) * (has('kick') ? 0.4 : 1) * (fams.includes('keys') ? 1 : 0.5) * 0.5,
       Acoustic: (has('kick') ? 0.2 : 1) * (stems.some((s) => s.role === 'Acoustic Guitar') ? 1 : 0.5) * 0.6,
       EDM: inR(124, 132) * (stems.some((s) => /Synth|Risers/.test(s.role)) ? 1 : 0.4) * 0.75,
+      'Afro House': inR(118, 127) * (has('perc') ? 1 : 0.5) * (has('kick') ? 1 : 0.3) * 0.82,
+      'Ghetto Zouk': inR(80, 96) * (has('kick') ? 1 : 0.4) * (has('vocal') ? 1 : 0.6) * 0.78,
+      Tarraxinha: inR(66, 86) * (has('bass') ? 1 : 0.4) * (has('kick') ? 1 : 0.5) * 0.75,
+      Zouk: inR(88, 105) * (guitars ? 1 : 0.6) * (has('vocal') ? 1 : 0.6) * 0.65,
     };
     const gRank = Object.entries(gs).sort((a, b) => b[1] - a[1]);
     const genre = gRank[0][0];

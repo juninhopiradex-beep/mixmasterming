@@ -36,7 +36,12 @@
     House: G([55, 50, 85, 55, 75, 75, 72, 80, 40], { Kick: 1, Bass: -2, 'Hi-Hat': -10 }, -8, 'punchy'),
     Techno: G([50, 65, 85, 55, 70, 65, 75, 85, 50], { Kick: 1.5, Bass: -2.5, 'Lead Vocal': -3 }, -8, 'loud'),
     Gospel: G([45, 35, 60, 65, 70, 70, 50, 60, 35], { Choir: -4, 'Backing Vocal': -5, Piano: -6 }, -11, 'warm'),
+    'Afro House': G([48, 45, 82, 60, 74, 72, 72, 82, 42], { Kick: 0.5, Bass: -2, Percussion: -7, Congas: -7, Shaker: -10, 'Hi-Hat': -10, 'Lead Vocal': -1.5 }, -8, 'punchy'),
+    'Ghetto Zouk': G([40, 35, 72, 55, 66, 72, 62, 78, 40], { Kick: -1, Bass: -2, 'Hi-Hat': -12 }, -9, 'punchy'),
+    Tarraxinha: G([35, 40, 75, 50, 62, 68, 66, 80, 45], { Kick: -0.5, Bass: -1, 'Sub Bass': -1, 'Lead Vocal': -1 }, -8.5, 'punchy'),
+    Zouk: G([45, 30, 60, 60, 68, 70, 55, 65, 38], { Kick: -2, Bass: -2.5, 'Electric Guitar': -8 }, -10, 'warm'),
   };
+  MM.BUILTIN_GENRES = Object.keys(MM.GENRES);
   MM.AESTHETICS = {
     'Warm Analog': { tone: -15, era: -20, sat: +18 },
     'Modern Clean': { tone: +12, era: +20, sat: -20, polish: +10 },
@@ -114,6 +119,11 @@
     if (drums.length && crest > 18) { d.punch += 4; reasons.push(`Bateria com transientes fortes (crest ${fmt(crest)} dB): preservar o punch.`); }
     const v = stems.find((s) => s.role === 'Lead Vocal');
     if (v && v.features.lra > 8) { d.polish += 5; reasons.push('Voz com grande variação dinâmica: mais controlo de nível.'); }
+    // perfil aprendido do estilo (biblioteca de treino)
+    if (MM.styles && MM.styles.directionDeltas) {
+      const dd = MM.styles.directionDeltas(state.music.genre, MM.MASTER_TARGET_BANDS);
+      if (dd) { Object.entries(dd.d).forEach(([k, v]) => (d[k] += v)); reasons.push(`Perfil aprendido de ${state.music.genre} (${dd.n} ${dd.n === 1 ? 'música' : 'músicas'}): ` + (dd.why.join(' ') || 'próximo da base.')); }
+    }
     (state.aesthetics || []).forEach((a) => Object.entries(MM.AESTHETICS[a] || {}).forEach(([k, dv]) => (d[k] += dv)));
     Object.keys(d).forEach((k) => (d[k] = Math.round(D.clamp(d[k], 0, 100))));
     return { dir: d, reasons };
@@ -149,16 +159,20 @@
     const vocal = stems.find((s) => s.role === 'Lead Vocal');
     stems.forEach((s) => {
       let t = (genre.bal[s.role] !== undefined ? genre.bal[s.role] : BAL[s.role] !== undefined ? BAL[s.role] : -10);
+      if (s.pair) t -= 3; // o par soma +3 dB
+      // balanço aprendido com stems pós-fader do estilo (já é por stem individual)
+      const lb = MM.styles && MM.styles.learnedBalance ? MM.styles.learnedBalance(state.music.genre, s.role) : null;
+      if (lb && s.role !== 'Lead Vocal') { t = D.lerp(t, lb.value, lb.weight); s._learned = lb; } else delete s._learned;
       const defH = MM.ROLES[s.role].hier;
       const hv = { P: 0, S: 1, B: 2 };
       t += (hv[defH] - hv[s.hier]) * 2.5; // hierarquia escolhida pelo utilizador
       if (['Kick', 'Snare', 'Clap'].includes(s.role)) t += n('punch') * 1.5;
       if (s.group === 'vocals' && s.role !== 'Lead Vocal') t += n('polish') * -0.5;
-      if (s.pair) t -= 3; // o par soma +3 dB
       if (!vocal) t += 2; // instrumental: sem referência de voz
       if (set(s, 'fader', +t.toFixed(1))) {
         const why = s.hier !== defH ? ` (hierarquia ${s.hier === 'P' ? 'Primary' : s.hier === 'S' ? 'Secondary' : 'Background'} definida por ti)` : '';
-        ex(s, 'Balanço', `Fader em ${fmtDb(t)} relativo à voz: relação típica de ${state.music.genre} para ${MM.ROLES[s.role].pt}${why}.`, 0.86);
+        const src = s._learned ? `aprendida de ${s._learned.n} ${s._learned.n === 1 ? 'sessão' : 'sessões'} de ${state.music.genre} na tua biblioteca` : `típica de ${state.music.genre}`;
+        ex(s, 'Balanço', `Fader em ${fmtDb(t)} relativo à voz: relação ${src} para ${MM.ROLES[s.role].pt}${why}.`, s._learned ? 0.9 : 0.86);
       }
     });
 
@@ -214,7 +228,7 @@
         for (let i = a; i <= b; i++) { const e = S1[i] - fit(i); mean += e; if (e > best) { best = e; bi = i; } }
         mean /= b - a + 1;
         const exc = 0.6 * best + 0.4 * mean;
-        if (exc > thr) cands.push({ type: 'peaking', freq: Math.round(fAt(bi)), gain: -Math.min(guard.eq, (exc - thr * 0.6) * 0.9), q: 1.3, why: name, score: exc });
+        if (exc > thr) cands.push({ type: 'peaking', freq: Math.round(fAt(bi)), gain: -Math.min(guard.eq * 0.75, 0.6 + (exc - thr) * 0.7), q: 1.3, why: name, score: exc });
       };
       region(200, 450, 'lama', 2.2, ['vocal', 'guitar', 'keys', 'pad', 'synth', 'snare', 'perc']);
       region(160, 320, 'lama no baixo', 2.5, ['bass']);
@@ -228,7 +242,7 @@
         const e = S[i] - S9[i];
         if (e > 5 && S[i] >= S[i - 1] && S[i] >= S[i + 1]) res.push({ i, e });
       }
-      res.sort((a, b) => b.e - a.e).slice(0, 2).forEach((r) => cands.push({ type: 'peaking', freq: Math.round(fAt(r.i)), gain: -Math.min(guard.eq, (r.e - 3) * 0.7), q: 5, why: 'ressonância', score: r.e }));
+      res.sort((a, b) => b.e - a.e).slice(0, 2).forEach((r) => cands.push({ type: 'peaking', freq: Math.round(fAt(r.i)), gain: -Math.min(guard.eq * 0.75, (r.e - 4) * 0.6), q: 5, why: 'ressonância', score: r.e }));
       // decisões musicais (aditivas, pequenas)
       if (fam === 'vocal') {
         const pres = D.mean(S1.slice(iAt(2000), iAt(5000))) - D.mean(Array.from({ length: iAt(5000) - iAt(2000) }, (_, k) => fit(iAt(2000) + k)));
@@ -456,7 +470,7 @@
         if (bestK < 0 || bestV < 0.15) continue;
         const freq = D.THIRD_OCT[bestK];
         const isLow = freq < 130 && ['kick'].includes(MM.ROLES[A.role].fam) && MM.ROLES[B.role].fam === 'bass';
-        const cut = +D.clamp(1.5 + bestV * 3.5, 1, guard.eq).toFixed(1);
+        const cut = +D.clamp(1 + bestV * 2.5, 1, Math.min(3.5, guard.eq)).toFixed(1);
         out.push({ a: A.id, b: B.id, aName: A.label, bName: B.label, freq: Math.round(freq), band: bestK, overlap: +bestV.toFixed(2), cut, kind: isLow ? 'duck' : 'dyn', conf: D.clamp(0.75 + bestV * 0.3, 0.75, 0.95) });
       }
     }

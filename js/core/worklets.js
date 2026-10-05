@@ -8,13 +8,15 @@
   const MM = (window.MM = window.MM || {});
   const SRC = String.raw`
 const dbToLin = (d) => Math.pow(10, d / 20);
+// parâmetros iniciais chegam de forma síncrona em processorOptions.init (as mensagens podem chegar tarde em renders offline)
+const initOf = (o) => (o && o.processorOptions && o.processorOptions.init) || null;
 const linToDb = (x) => (x > 1e-9 ? 20 * Math.log10(x) : -180);
 
 class Comp extends AudioWorkletProcessor {
   constructor(o) {
     super();
     this.quiet = !!(o && o.processorOptions && o.processorOptions.quiet);
-    this.p = { thr: -18, ratio: 3, atk: 10, rel: 120, knee: 6, makeup: 0, mix: 1, bypass: false };
+    this.p = Object.assign({ thr: -18, ratio: 1, atk: 10, rel: 120, knee: 6, makeup: 0, mix: 1, bypass: false }, initOf(o));
     this.env = 0; this.gr = 0; this.grMax = 0; this.count = 0;
     this.port.onmessage = (e) => { Object.assign(this.p, e.data); };
   }
@@ -67,7 +69,7 @@ class Limiter extends AudioWorkletProcessor {
   constructor(o) {
     super();
     this.quiet = !!(o && o.processorOptions && o.processorOptions.quiet);
-    this.p = { ceiling: -1, lookahead: 4, release: 80, inGain: 0, bypass: false };
+    this.p = Object.assign({ ceiling: -1, lookahead: 4, release: 80, inGain: 0, bypass: false }, initOf(o));
     this.port.onmessage = (e) => { Object.assign(this.p, e.data); this.setup(); };
     // interpolador 4x (FIR polifásico, 32 taps, Kaiser β=6) para deteção de true peak
     const taps = 32, h = new Float64Array(taps), I0 = (x) => { let s = 1, t = 1; for (let k = 1; k < 30; k++) { t *= (x / 2 / k) ** 2; s += t; } return s; };
@@ -86,6 +88,9 @@ class Limiter extends AudioWorkletProcessor {
     this.dqV = new Float64Array(this.L + 12); this.dqI = new Float64Array(this.L + 12); this.dqH = 0; this.dqT = 0; this.t = 0;
     this.boxBuf = new Float32Array(this.L).fill(1); this.bi = 0; this.boxSum = this.L;
     this.relC = Math.exp(-1 / (this.p.release * 0.001 * sampleRate));
+    this.relS = Math.exp(-1 / ((this.p.releaseSlow || this.p.release * 2.5) * 0.001 * sampleRate));
+    this.susC = Math.exp(-1 / ((this.p.susTime || 1.5) * sampleRate));
+    if (this.sus === undefined) this.sus = 1;
   }
   process(inputs, outputs) {
     const inp = inputs[0], out = outputs[0];
@@ -116,7 +121,10 @@ class Limiter extends AudioWorkletProcessor {
       this.dqV[this.dqT] = need; this.dqI[this.dqT] = t; this.dqT = (this.dqT + 1) % cap;
       while (this.dqI[this.dqH] <= t - this.H) this.dqH = (this.dqH + 1) % cap;
       const mn = this.dqV[this.dqH];
-      this.env = mn < this.env ? mn : this.relC * this.env + (1 - this.relC) * mn;
+      // release dupla: picos transitórios recuperam depressa até ao nível sustentado; o nível sustentado recupera devagar (menos distorção nos graves)
+      this.sus = this.susC * this.sus + (1 - this.susC) * Math.min(this.env, 1);
+      if (mn < this.env) this.env = mn;
+      else { const rc = this.env < this.sus * 0.89 ? this.relC : this.relS; this.env = rc * this.env + (1 - rc) * mn; }
       this.boxSum += this.env - this.boxBuf[this.bi]; this.boxBuf[this.bi] = this.env; this.bi = (this.bi + 1) % L;
       const g = p.bypass ? 1 : Math.min(this.env, this.boxSum / L);
       const gr = -20 * Math.log10(Math.max(g, 1e-6));
@@ -136,9 +144,9 @@ class Limiter extends AudioWorkletProcessor {
 registerProcessor('mm-limiter', Limiter);
 
 class Trans extends AudioWorkletProcessor {
-  constructor() {
+  constructor(o) {
     super();
-    this.p = { attack: 0, sustain: 0, bypass: true };
+    this.p = Object.assign({ attack: 0, sustain: 0, bypass: true }, initOf(o));
     this.port.onmessage = (e) => Object.assign(this.p, e.data);
     this.f = 0; this.s = 0;
   }
@@ -181,6 +189,7 @@ class DynEq extends AudioWorkletProcessor {
     this.bands = [];
     this.port.onmessage = (e) => { this.setBands(e.data.bands || []); };
     this.count = 0;
+    if (initOf(o)) this.setBands(initOf(o).bands || []);
   }
   setBands(list) {
     const old = this.bands;
@@ -238,6 +247,76 @@ class DynEq extends AudioWorkletProcessor {
   }
 }
 registerProcessor('mm-dyneq', DynEq);
+
+// Saturação com oversampling 2× (FIR meia-banda de fase linear, 47 taps) e caminho limpo ALINHADO.
+// Latência fixa e conhecida: 23 amostras (dry e wet chegam juntos → sem filtro em pente).
+const SAT_LAT = 23;
+const HB = (() => {
+  const N = 47, c = 23, h = new Float64Array(N);
+  const I0 = (x) => { let s = 1, t = 1; for (let k = 1; k < 40; k++) { t *= (x / 2 / k) ** 2; s += t; } return s; };
+  for (let n = 0; n < N; n++) {
+    const m = n - c, sinc = m === 0 ? 1 : Math.sin(Math.PI * m / 2) / (Math.PI * m / 2);
+    h[n] = 0.5 * sinc * I0(8 * Math.sqrt(Math.max(0, 1 - ((2 * n) / (N - 1) - 1) ** 2))) / I0(8);
+  }
+  const he = new Float64Array(24); for (let j = 0; j < 24; j++) he[j] = h[2 * j];
+  return { he, hc: h[23] };
+})();
+class Sat extends AudioWorkletProcessor {
+  constructor(o) {
+    super();
+    this.p = Object.assign({ model: 'tape', drive: 0, mix: 0, thr: 1, bypass: false }, initOf(o));
+    this.port.onmessage = (e) => { Object.assign(this.p, e.data); this.prep(); };
+    this.st = [0, 1].map(() => ({ x: new Float64Array(32), xi: 0, ye: new Float64Array(32), yo: new Float64Array(32), yi: 0, dc1: 0, dc2: 0 }));
+    this.prep();
+  }
+  prep() {
+    const p = this.p, k = 1 + Math.max(0, p.drive) * 7;
+    this.k = k;
+    const f = this.fn();
+    const e = 1e-4; this.d0 = (f(e) - f(-e)) / (2 * e) || 1; this.f0 = f(0);
+  }
+  fn() {
+    const k = this.k, p = this.p;
+    switch (p.model) {
+      case 'tube': { const b = 0.15; return (x) => Math.tanh(k * (x + b)) - Math.tanh(k * b); }
+      case 'transformer': return (x) => Math.atan(k * x * 1.2);
+      case 'console': return (x) => { const y = Math.max(-1.5, Math.min(1.5, k * x * 0.7)); return y - (y * y * y) / 6.75; };
+      case 'soft': return (x) => { const y = k * x, a = Math.abs(y); return a < 0.7 ? y : Math.sign(y) * (0.7 + 0.3 * Math.tanh((a - 0.7) / 0.3)); };
+      case 'exciter': return (x) => Math.tanh(k * x) + 0.08 * p.drive * (k * x) * (k * x);
+      case 'clip': { const T = p.thr, kn = T * 0.25; return (x) => { const a = Math.abs(x); let y; if (a <= T - kn) y = a; else if (a >= T + kn) y = T; else { const t = (a - (T - kn)) / (2 * kn); y = T - kn + 2 * kn * (t - t * t / 2); } return x < 0 ? -y : y; }; }
+      default: return (x) => Math.tanh(k * x);
+    }
+  }
+  process(inputs, outputs) {
+    const inp = inputs[0], out = outputs[0];
+    if (!inp || !inp.length) return true;
+    const n = inp[0].length, p = this.p, he = HB.he, hc = HB.hc;
+    const f = this.fn(), d0 = p.model === 'clip' ? 1 : this.d0, f0 = p.model === 'clip' ? 0 : this.f0;
+    const wet = p.bypass ? 0 : p.model === 'clip' ? 1 : p.mix, dry = 1 - wet;
+    const dcOn = p.model === 'tube' || p.model === 'exciter';
+    for (let c = 0; c < out.length; c++) {
+      const src = inp[Math.min(c, inp.length - 1)], o = out[c], S = this.st[Math.min(c, 1)];
+      for (let i = 0; i < n; i++) {
+        // histórico de entrada (anel de 32)
+        S.xi = (S.xi + 1) & 31; S.x[S.xi] = src[i];
+        // sobreamostragem: fase par = FIR, fase ímpar = amostra atrasada 11
+        let ue = 0;
+        for (let j = 0; j < 24; j++) ue += he[j] * S.x[(S.xi - j) & 31];
+        ue *= 2;
+        const uo = S.x[(S.xi - 11) & 31];
+        let ye = (f(ue) - f0) / d0, yo = (f(uo) - f0) / d0;
+        S.yi = (S.yi + 1) & 31; S.ye[S.yi] = ye; S.yo[S.yi] = yo;
+        // decimação: out[n] = Σ h[2j]·y_par[n−j] + h[23]·y_ímpar[n−12]
+        let w = hc * S.yo[(S.yi - 12) & 31];
+        for (let j = 0; j < 24; j++) w += he[j] * S.ye[(S.yi - j) & 31];
+        if (dcOn) { const y2 = w - S.dc1 + 0.9995 * S.dc2; S.dc1 = w; S.dc2 = y2; w = y2; }
+        o[i] = dry * S.x[(S.xi - SAT_LAT) & 31] + wet * w;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('mm-sat', Sat);
 
 class Meter extends AudioWorkletProcessor {
   constructor() {
@@ -318,6 +397,7 @@ class Meter extends AudioWorkletProcessor {
 }
 registerProcessor('mm-meter', Meter);
 `;
+  MM.SAT_LAT = 23; // tem de coincidir com SAT_LAT no worklet
   let url = null;
   const loaded = new WeakMap();
   MM.loadWorklets = function (ctx) {

@@ -4,6 +4,7 @@
  */
 (function () {
   const MM = (window.MM = window.MM || {});
+  MM.VERSION = '1.2';
   const D = (MM.dsp = {});
 
   // ---------- utilitários ----------

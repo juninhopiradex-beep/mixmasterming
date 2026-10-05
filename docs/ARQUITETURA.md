@@ -60,7 +60,8 @@ Legenda de estado: ✅ implementado na versão web · 🟡 parcial / heurístico
 - EQ dinâmico (master): energia relativa da banda vs média de longo prazo; corte só acima do alvo.
 - Ponderação K e gating BS.1770-4 (integrado, momentary, short-term, LRA).
 - Reverbs por convolução com IRs sintetizadas (densidade, damping dependente do tempo, early reflections na room).
-- Saturação por waveshaping (tube assimétrico, tape, transformer, console, soft clip, exciter) com oversampling e normalização de ganho de pequeno sinal.
+- Saturação em AudioWorklet próprio (tube assimétrico, tape, transformer, console, soft clip, exciter, clipper) com oversampling 2× por FIR meia-banda de fase linear, dry/wet alinhados internamente e compensação de latência (PDC) entre stems. (O WaveShaper nativo do Chrome atrasa 128–192 amostras com oversampling e causava filtro em pente — ver `AUDITORIA.md`.)
+- Parâmetros dos processadores entregues de forma síncrona na construção (os renders offline não dependem de mensagens).
 
 **Risco:** médio (CPU no browser). **Prioridade:** P0. **Impacto:** direto e total. **Estado:** ✅.
 
@@ -213,6 +214,8 @@ Hoje: DSP em CPU (audio thread + worklets; análise no main thread com *yield* p
 Features por stem guardadas (IndexedDB) → reabrir não re-analisa. Premaster reutilizado quando só o master muda. IRs de reverb e curvas de saturação em cache. Buffers renderizados das últimas versões em memória. 🔜 cache de análise por *hash* do ficheiro.
 
 ## 25. Estratégia de treino dos modelos
+
+**Implementado (v1.1) — aba Estilos:** exemplos por estilo (masters e stems pós-fader), aprovação obrigatória antes da análise, características por música (curva 1/3 oit., 7 bandas, LUFS, LRA, PLR, crest, largura por região, graves mono, punch, BPM, densidade de onsets, centróide, macro-dinâmica), perfis robustos (medianas e percentis), classificador gaussiano diagonal com validação cruzada leave-one-out, e aplicação do perfil às decisões de mistura (balanço, direção) e master (curva-alvo, alvo LUFS, glue/clipper, largura, mono). Os passos seguintes mantêm-se:
 
 1. **Pré-treino** do classificador em datasets públicos de instrumentos/stems.
 2. **Afinação** com stems reais por estilo (Kizomba, Semba, Kuduro, Afrobeat, Amapiano…).

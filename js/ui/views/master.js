@@ -47,6 +47,12 @@
   };
 
   function spectrumTarget(st, freqs) {
+    const prof = MM.styles && MM.styles.profile(st.music.genre);
+    if (prof && prof.curve31 && prof.conf > 0.3) {
+      const pts = MM.styles.THIRD.map((f, i) => [Math.log2(f), prof.curve31[i]]);
+      const tiltAdj = ((st.direction.tone - 50) / 50) * 0.8;
+      return freqs.map((f) => D.curveAt(pts, Math.log2(f)) + tiltAdj * Math.log2(f / 1000) * 0.5);
+    }
     const s = MM.MASTER_STYLES[st.master.style] || MM.MASTER_STYLES.Punchy;
     const genreTilt = { Kizomba: -0.3, 'Hip-Hop': -0.6, Trap: -0.6, EDM: 0.4, House: 0.2, Pop: 0.4, Jazz: -0.4, Acoustic: -0.2 }[st.music.genre] || 0;
     const tilt = s.tilt + genreTilt + ((st.direction.tone - 50) / 50) * 0.8;
@@ -87,7 +93,7 @@
           <div class="row" style="margin-top:12px"><button class="btn acc sm" id="remaster">${UI.icon('spark')}Re-masterizar</button><button class="btn ghost sm" id="mReset">Reset IA</button></div>
         </div>
         <div class="c">
-          <div class="row" style="justify-content:space-between"><div class="eyebrow">Espectro · Master vs alvo vs referência</div><div class="row small muted" style="gap:16px"><span><span style="display:inline-block;width:18px;border-top:2px solid var(--acc);vertical-align:3px"></span> Master</span><span><span style="display:inline-block;width:18px;border-top:2px dashed #cfd6e2;vertical-align:3px"></span> Alvo do estilo</span>${ref ? '<span><span style="display:inline-block;width:18px;border-top:2px solid #f5b14c;vertical-align:3px"></span> Referência</span>' : ''}</div></div>
+          <div class="row" style="justify-content:space-between"><div class="eyebrow">Espectro · Master vs alvo vs referência</div><div class="row small muted" style="gap:16px"><span><span style="display:inline-block;width:18px;border-top:2px solid var(--acc);vertical-align:3px"></span> Master</span><span><span style="display:inline-block;width:18px;border-top:2px dashed #cfd6e2;vertical-align:3px"></span> ${MM.styles && MM.styles.profile(st.music.genre) ? 'Alvo aprendido · ' + UI.esc(st.music.genre) : 'Alvo do estilo'}</span>${ref ? '<span><span style="display:inline-block;width:18px;border-top:2px solid #f5b14c;vertical-align:3px"></span> Referência</span>' : ''}</div></div>
           <div class="cvbox" style="margin-top:12px"><canvas id="mspec" class="cv" style="height:330px;border:1px solid var(--line);border-radius:12px;background:rgba(0,0,0,.25)"></canvas><div class="tooltip" id="mtip" style="display:none"></div></div>
           <div class="tiles">
             <div class="tile"><div class="k">LUFS-I</div><div class="v" id="tI">${m ? UI.fmtNum(m.lufs) : '—'}</div><small>alvo ${UI.fmtNum(M.target)}</small></div>

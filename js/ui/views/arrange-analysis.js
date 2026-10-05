@@ -10,7 +10,7 @@
       const st = app.state, stems = st.stems.filter((s) => !s.removed);
       return `<div style="display:grid;grid-template-columns:230px minmax(0,1fr);height:100%;overflow:auto">
         <div style="border-right:1px solid var(--line)"><div style="height:46px;border-bottom:1px solid var(--line)"></div>
-          ${stems.map((s) => `<div class="row" style="height:58px;padding:0 14px;border-bottom:1px solid var(--line);gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:${UI.colorOf(s)}"></span><div style="flex:1;min-width:0"><b style="font-size:13.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${UI.esc(s.label)}</b><small class="dim mono">${UI.fmtDb(s.p.fader)} dB · ${MM.panLabel(s.p.pan)}</small></div><button class="btn xs ${s.solo ? 'warn' : ''}" data-solo="${s.id}">S</button><button class="btn xs ${s.mute ? 'warn' : ''}" data-mute="${s.id}">M</button></div>`).join('')}
+          ${stems.map((s) => `<div class="row" style="height:58px;padding:0 14px;border-bottom:1px solid var(--line);gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:${UI.colorOf(s)}"></span><div style="flex:1;min-width:0"><b style="font-size:13.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${UI.esc(s.label)}</b><small class="dim mono">${UI.fmtDb(s.p.fader)} dB · ${MM.panLabel(s.p.pan)}</small></div>${UI.sm(s)}</div>`).join('')}
         </div>
         <div style="position:relative" id="arrWrap">
           <canvas id="arrRuler" style="width:100%;height:46px;display:block;border-bottom:1px solid var(--line)"></canvas>
@@ -47,8 +47,6 @@
       ctx.fillStyle = '#7c8597'; ctx.font = '10.5px Geist Mono, monospace';
       for (let b = 0; b <= st.music.bars; b += 8) { const x = ((st.music.downbeat + b * st.music.barSec) / dur) * w; ctx.fillText(String(b + 1), x + 2, 14); ctx.fillRect(x, 16, 1, 5); }
       rc.onpointerdown = (e) => { const r = rc.getBoundingClientRect(); const t = ((e.clientX - r.left) / r.width) * dur; const s = st.music.sections.find((x) => t >= x.start && t < x.end); if (s) app.setLoop(app.engine.loop && app.engine.loop[0] === s.start ? null : s); };
-      root.querySelectorAll('[data-solo]').forEach((b) => (b.onclick = () => app.change('Solo', () => { const s = app.stem(b.dataset.solo); s.solo = !s.solo; }, { allStems: true })));
-      root.querySelectorAll('[data-mute]').forEach((b) => (b.onclick = () => app.change('Mute', () => { const s = app.stem(b.dataset.mute); s.mute = !s.mute; }, { allStems: true })));
     },
     frame(app) {
       const cv = document.getElementById('arrHead'); if (!cv) return;
@@ -69,7 +67,7 @@
     render(app) {
       const st = app.state, sc = st.score;
       const bars = sc ? [['Balance', sc.balance], ['Dynamics', sc.dynamics], ['Low-End Control', sc.lowEnd], ['Loudness', sc.loudness], ['Clarity', sc.clarity], ['Stereo Image', sc.stereo], ['Vocal Presence', sc.vocal], ['Phase Integrity', sc.phase]] : [];
-      return `<div class="ana">
+      return `${UI.stemBar(st.stems.filter((s) => !s.removed))}<div class="ana">
         <div class="panel p"><div class="panel-title"><div class="eyebrow">Stereo field</div><span class="small muted">Arrasta: ← → pan · ↑ ↓ profundidade</span></div><div class="cvbox"><canvas id="sf" class="cv" style="height:440px"></canvas><div class="tooltip" id="sfTip" style="display:none"></div></div></div>
         <div class="panel p"><div class="panel-title"><div class="eyebrow">Mapa de frequências · 20 Hz – 20 kHz</div><span class="small muted"><span style="display:inline-block;width:12px;height:8px;border:1.5px dashed var(--bad);vertical-align:0"></span> masking detetado · clica numa zona para ver a correção</span></div><div class="cvbox"><canvas id="fm" class="cv" style="height:440px"></canvas><div class="tooltip" id="fmTip" style="display:none"></div></div><div id="fmInfo" class="small muted" style="min-height:22px;margin-top:10px"></div></div>
       </div>

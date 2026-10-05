@@ -29,7 +29,7 @@
       const sl = (lbl, key, min, max, step, fmt) => `<div style="margin-bottom:12px"><div class="row" style="justify-content:space-between"><span>${lbl}</span><span class="mono" data-rv="${key}">${fmt(r[key])}</span></div><input type="range" min="${min}" max="${max}" step="${step}" value="${r[key]}" data-r="${key}"></div>`;
       return `<div class="auto">
         <div class="lanes-l"><div style="height:62px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 18px"><label class="check small"><input type="checkbox" id="showInt" ${app.showInternal ? 'checked' : ''}>Automação interna</label></div>
-          ${lanes.map((l) => `<div class="lane-h"><b>${UI.esc(l.label)}</b><small>${UI.esc(l.sub)}</small><div class="val" data-lv="${l.id}">${fmtVal(app, l, MM.laneValue(l, app.engine.position()))}</div>
+          ${lanes.map((l) => `<div class="lane-h"><div class="row" style="justify-content:space-between"><b>${UI.esc(l.label)}</b>${l.target.type === 'stem' && app.stem(l.target.id) ? UI.sm(app.stem(l.target.id)) : ''}</div><small>${UI.esc(l.sub)}</small><div class="val" data-lv="${l.id}">${fmtVal(app, l, MM.laneValue(l, app.engine.position()))}</div>
             <div class="row" style="gap:14px"><label class="check small"><input type="checkbox" data-en="${l.id}" data-w="ai" ${l.enabled.ai ? 'checked' : ''}>IA</label><label class="check small"><input type="checkbox" data-en="${l.id}" data-w="manual" ${l.enabled.manual ? 'checked' : ''}>Manual${l.manual.length ? ` (${l.manual.length})` : ''}</label></div></div>`).join('') || '<div class="empty-note">Sem automação — corre o AI Mix &amp; Master.</div>'}
         </div>
         <div style="overflow:auto;position:relative" id="autoMid">

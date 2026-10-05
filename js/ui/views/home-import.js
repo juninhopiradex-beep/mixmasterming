@@ -25,7 +25,7 @@
         <div class="cards3">
           <div class="card-act" id="demo"><div class="ic">${UI.icon('music')}</div><b>Sessão de demonstração</b><span class="muted small">15 stems de uma Kizomba (94 BPM, F♯ menor) sintetizados no browser, com nomes errados de propósito.</span></div>
           <div class="card-act" id="masterOnly"><div class="ic">${UI.icon('plug')}</div><b>Masterizar uma mix stereo</b><span class="muted small">Modo MixMind Master: carrega uma mix já feita e a IA propõe o master. Tu decides.</span></div>
-          <div class="card-act" id="settings"><div class="ic">${UI.icon('gear')}</div><b>Motor de IA</b><span class="muted small">Qualidade da análise, guarda contra over-processing e privacidade.</span></div>
+          <div class="card-act" id="stylesCard"><div class="ic">${UI.icon('brain')}</div><b>Treinar estilos</b><span class="muted small">Carrega Kizombas, Sembas, Afro House… A IA aprende o som de cada estilo e aplica-o quando escolhem o preset.</span></div>
         </div>
         ${rec.length ? `<div class="recent"><span class="muted small">Projetos recentes:</span>${rec.map((r) => `<button class="chip" data-open="${r.id}">${UI.icon('file')}${UI.esc(r.name)} <span class="dim mono" style="font-size:11px">${r.mode === 'master' ? 'master' : r.n + ' stems'}</span></button>`).join('')}</div>` : ''}
         <div class="feat">
@@ -43,7 +43,7 @@
       $('#pickDir').onclick = () => app.pickFiles({ dir: true });
       $('#demo').onclick = () => app.loadDemo();
       $('#masterOnly').onclick = () => app.go('plugin');
-      $('#settings').onclick = () => app.go('settings');
+      $('#stylesCard').onclick = () => app.go('styles');
       root.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => app.openProject(b.dataset.open)));
     },
     onStep(app, k) { if (app.state.stage === 'analyzing') V.import.onStep(app, k); },
@@ -97,8 +97,9 @@
             ${issues.map((i) => `<div class="issue"><div class="row" style="justify-content:space-between"><b class="mono">${UI.esc(i.title)}</b><span class="k">${i.kind}</span></div><div style="margin:6px 0 10px">${UI.esc(i.text)}</div><div class="row">${i.actions.map(([a, l], k) => `<button class="btn sm ${k ? 'ghost' : ''}" data-issue="${i.id}" data-a="${a}">${l}</button>`).join('')}</div></div>`).join('')}</div>` : ''}
           <div class="row" style="align-items:baseline;gap:16px;flex-wrap:wrap"><h1>${act.length} stems analisados</h1><span class="muted">A IA classificou cada ficheiro pelo nome e pelo áudio. Corrige o que estiver errado — tudo é editável.</span></div>
           <div class="row wrap" style="margin:14px 0 6px"><span class="chip">${hi} com alta confiança</span>${rev ? `<span class="chip warn">${rev} a rever</span>` : ''}${fake ? `<span class="chip">${fake} mono falso</span>` : ''}<span class="spacer"></span><button class="btn sm" id="addStems">${UI.icon('plus')}Adicionar stems</button></div>
-          <table class="stbl"><thead><tr><th>Forma de onda</th><th>Ficheiro</th><th>Papel detetado</th><th>Confiança</th><th>Hierarquia</th><th>Notas</th><th></th></tr></thead><tbody>
+          <table class="stbl"><thead><tr><th>Ouvir</th><th>Forma de onda</th><th>Ficheiro</th><th>Papel detetado</th><th>Confiança</th><th>Hierarquia</th><th>Notas</th><th></th></tr></thead><tbody>
           ${stems.map((s) => `<tr class="${s.removed ? 'removed' : ''}" data-id="${s.id}">
+            <td>${s.removed ? '' : UI.sm(s)}</td>
             <td><canvas class="wf" data-wf="${s.id}"></canvas></td>
             <td class="mono" style="font-size:13.5px">${UI.esc(s.name)}<div class="dim tiny">${s.header.format || ''}${s.header.sampleRate ? ' · ' + (s.header.sampleRate / 1000).toString().replace('.', ',') + ' kHz' : ''}${s.header.bits ? ' · ' + s.header.bits + '-bit' : ''} · ${s.chs.length === 1 ? 'mono' : 'estéreo'}</div></td>
             <td><select class="field role-sel" data-role="${s.id}" ${s.removed ? 'disabled' : ''}>${MM.ROLE_LIST.map((r) => `<option ${r === s.role ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
@@ -111,13 +112,14 @@
         <div class="panel p" style="position:sticky;top:0">
           <div class="eyebrow">Visão geral da sessão</div>
           <div class="kv" style="margin-top:14px">
-            <div><div class="k">Género</div><div class="v" style="font-size:17px"><select class="field" id="genreSel" style="height:32px;font-family:var(--mono);font-size:14px;padding-left:8px">${Object.keys(MM.GENRES).map((g) => `<option ${g === m.genre ? 'selected' : ''}>${g}</option>`).join('')}</select></div><div class="dim tiny" style="margin-top:3px">${Math.round(m.genreConf * 100)} % · alt. ${m.genreAlts.slice(0, 2).join(', ')}</div></div>
+            <div><div class="k">Género</div><div class="v" style="font-size:17px"><select class="field" id="genreSel" style="height:32px;font-family:var(--mono);font-size:14px;padding-left:8px">${Object.keys(MM.GENRES).map((g) => `<option ${g === m.genre ? 'selected' : ''}>${g}</option>`).join('')}</select></div><div class="dim tiny" style="margin-top:3px">${Math.round(m.genreConf * 100)} % · ${m.genreSource === 'treino' ? 'reconhecido pelo treino' : m.genreSource === 'manual' ? 'escolhido por ti' : 'alt. ' + m.genreAlts.slice(0, 2).join(', ')}</div>${(() => { const p = MM.styles && MM.styles.profile(m.genre); return p ? `<div class="tiny acc-t" style="margin-top:3px">Perfil aprendido · ${p.n} ${p.n === 1 ? 'música' : 'músicas'}</div>` : `<div class="tiny dim" style="margin-top:3px"><a data-view="styles" style="cursor:pointer;color:var(--acc)">Treinar este estilo</a></div>`; })()}</div>
             <div><div class="k">BPM</div><div class="v">${m.bpm}</div></div>
             <div><div class="k">Tom</div><div class="v" style="font-size:18px">${m.key}</div></div>
             <div><div class="k">Compasso</div><div class="v">${m.meter}</div></div>
             <div><div class="k">Duração</div><div class="v">${D.fmtTime(m.duration).slice(0, 5)}</div></div>
             <div><div class="k">Stems</div><div class="v">${act.length}</div></div>
           </div>
+          ${m.styleSuggestion && m.styleSuggestion.all ? `<div class="small muted" style="margin-top:12px">Pelo treino: ${m.styleSuggestion.all.map((x) => `<button class="chip" data-sug-style="${UI.esc(x.style)}" style="height:24px;font-size:12px;margin:2px">${UI.esc(x.style)} ${Math.round(x.p * 100)}%</button>`).join('')}</div>` : ''}
           <div class="sections-bar" style="margin-top:16px">${m.sections.map((s, i) => `<div class="${/Refr/.test(s.name) ? 'hi' : ''}" style="flex:${s.end - s.start}" title="${s.name} · ${D.fmtTime(s.start).slice(0, 5)}" data-sec="${i}"></div>`).join('')}</div>
           <div class="sections-lbl">${m.sections.map((s) => `<span style="flex:${s.end - s.start}">${UI.esc(s.name.replace('Verso ', 'V').replace('Refrão final', 'Ref. final').replace('Refrão', 'Ref.'))}</span>`).join('')}</div>
           <div class="row wrap" style="margin-top:16px">
@@ -163,10 +165,11 @@
       }, {})));
       const gs = root.querySelector('#genreSel');
       if (gs) gs.onchange = () => app.change('Género ' + gs.value, () => {
-        st.music.genre = gs.value; st.music.genreConf = 1;
+        st.music.genre = gs.value; st.music.genreConf = 1; st.music.genreSource = 'manual';
         const pd = MM.proposeDirection(st); st.directionAI = pd.dir; st.direction = Object.assign({}, pd.dir); st.directionReasons = pd.reasons;
         const g = MM.GENRES[gs.value]; st.master.target = g.target; st.master.targetBase = g.target;
       }, {});
+      root.querySelectorAll('[data-sug-style]').forEach((b) => (b.onclick = () => { gs.value = b.dataset.sugStyle; gs.onchange(); }));
       const ri = root.querySelector('#refInf');
       ri.oninput = () => (root.querySelector('#refInfV').textContent = ri.value + ' %');
       ri.onchange = () => app.change('Influência da referência', () => { st.refInfluence = ri.value / 100; }, { refresh: false });

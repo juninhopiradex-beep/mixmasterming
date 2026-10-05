@@ -37,7 +37,7 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>',
     send: '<path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/>',
-    brain: '<path d="M9 3a3 3 0 0 0-3 3v.2A3 3 0 0 0 4 9a3 3 0 0 0 .5 5A3 3 0 0 0 7 18a3 3 0 0 0 5 1.5V4.5A3 3 0 0 0 9 3z"/><path d="M15 3a3 3 0 0 1 3 3v.2A3 3 0 0 1 20 9a3 3 0 0 1-.5 5A3 3 0 0 1 17 18a3 3 0 0 1-5 1.5"/>',
+    brain: '<rect x="3" y="4" width="4.5" height="16" rx="1"/><rect x="9.5" y="4" width="4.5" height="16" rx="1"/><path d="m16 5.4 3.7-1 3.6 13.8-3.7 1z"/><path d="M3 8h4.5M9.5 16H14"/>',
     mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/>',
     compare: '<path d="M12 3v18"/><rect x="3" y="7" width="6" height="10" rx="1"/><rect x="15" y="5" width="6" height="14" rx="1"/>',
     target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
@@ -91,7 +91,8 @@
   // canvas com hiDPI
   UI.fitCanvas = function (cv) {
     const r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    // proteção: um canvas nunca passa de 4096 px (evita o ícone de imagem partida e loops de layout)
+    const w = Math.max(1, Math.min(4096, Math.round(r.width * dpr))), h = Math.max(1, Math.min(4096, Math.round(r.height * dpr)));
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
     const ctx = cv.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -138,6 +139,10 @@
     if (o.reset) el.addEventListener('dblclick', o.reset);
   };
 
+  /** Botões Solo / Mute de um stem (tratados globalmente pela app, em qualquer vista). */
+  UI.sm = (s) => `<span class="sm"><button class="s ${s.solo ? 'on' : ''}" data-ssolo="${s.id}" title="Solo (S)">S</button><button class="m ${s.mute ? 'on' : ''}" data-smute="${s.id}" title="Mute (M)">M</button></span>`;
+  /** Barra horizontal com todos os stems e os seus S/M. */
+  UI.stemBar = (stems) => `<div class="stembar">${stems.map((s) => `<span class="sb ${s.mute ? 'muted-s' : ''}"><i style="background:${UI.colorOf(s)}"></i>${UI.esc(s.short || s.label)}${UI.sm(s)}</span>`).join('')}</div>`;
   UI.rangePct = (inp) => { const p = ((inp.value - inp.min) / (inp.max - inp.min)) * 100; inp.style.setProperty('--p', p + '%'); };
   UI.bindRanges = (root) => UI.$$('input[type=range]', root).forEach((r) => { UI.rangePct(r); r.addEventListener('input', () => UI.rangePct(r)); });
 

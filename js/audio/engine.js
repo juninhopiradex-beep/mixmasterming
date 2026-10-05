@@ -13,39 +13,6 @@
   const D = MM.dsp;
   const BW4 = [0.5412, 1.3066]; // Butterworth de 4.ª ordem em duas secções
 
-  // ---------- curvas ----------
-  const curveCache = {};
-  MM.satCurve = function (model, drive) {
-    const key = model + ':' + drive.toFixed(3);
-    if (curveCache[key]) return curveCache[key];
-    const N = 2048, c = new Float32Array(N);
-    const k = 1 + drive * 7;
-    const f = {
-      tube: (x) => Math.tanh(k * (x + 0.15)) - Math.tanh(k * 0.15),
-      tape: (x) => Math.tanh(k * x),
-      transformer: (x) => Math.atan(k * x * 1.2),
-      console: (x) => { const y = D.clamp(k * x * 0.7, -1.5, 1.5); return y - (y * y * y) / 6.75; },
-      soft: (x) => { const y = k * x; return Math.abs(y) < 0.7 ? y : Math.sign(y) * (0.7 + 0.3 * Math.tanh((Math.abs(y) - 0.7) / 0.3)); },
-      exciter: (x) => Math.tanh(k * x) + 0.08 * drive * (k * x) * (k * x),
-    }[model] || ((x) => Math.tanh(k * x));
-    const eps = 1e-4, d0 = (f(eps) - f(-eps)) / (2 * eps) || 1;
-    // entrada da curva: −2..+2 (pré-escala 0.5 aplicada antes do shaper)
-    for (let i = 0; i < N; i++) { const x = ((i / (N - 1)) * 2 - 1) * 2; c[i] = (f(x) - f(0)) / d0 / 2; }
-    return (curveCache[key] = c);
-  };
-  MM.clipCurve = function (T) {
-    const N = 4096, c = new Float32Array(N), knee = T * 0.25;
-    for (let i = 0; i < N; i++) {
-      const x = ((i / (N - 1)) * 2 - 1) * 2, a = Math.abs(x);
-      let y;
-      if (a <= T - knee) y = a;
-      else if (a >= T + knee) y = T;
-      else { const t = (a - (T - knee)) / (2 * knee); y = T - knee + 2 * knee * (t - (t * t) / 2); }
-      c[i] = (Math.sign(x) * y) / 2;
-    }
-    return c;
-  };
-
   // ---------- respostas a impulso sintéticas ----------
   MM.makeIR = function (ctx, type, decay, damp) {
     const sr = ctx.sampleRate, n = Math.max(1, Math.round(sr * Math.min(5, decay * 1.02 + 0.05)));
@@ -102,8 +69,8 @@
       return b;
     }
     gain(v) { const g = this.ctx.createGain(); g.gain.value = v === undefined ? 1 : v; return g; }
-    wnode(name, ch, key) {
-      const n = new AudioWorkletNode(this.ctx, name, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [ch], channelCount: ch, channelCountMode: 'explicit', processorOptions: { quiet: this.offline } });
+    wnode(name, ch, key, init) {
+      const n = new AudioWorkletNode(this.ctx, name, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [ch], channelCount: ch, channelCountMode: 'explicit', processorOptions: { quiet: this.offline, init: init || null } });
       if (key && !this.offline) n.port.onmessage = (e) => { this.gr[key] = e.data.gr; };
       return n;
     }
@@ -121,15 +88,22 @@
       holder.sig = sig;
       return true;
     }
-    shaper(over) {
-      const sIn = this.gain(1), out = this.gain(1), dry = this.gain(1), wet = this.gain(0), sh = this.ctx.createWaveShaper();
-      sh.oversample = over;
-      const dc = this.biq('highpass', 7, 0.7071);
-      sIn.connect(dry).connect(dc);
-      this.chain([sIn, this.gain(0.5), sh, this.gain(2), wet, dc]);
-      dc.connect(out);
-      return { in: sIn, out, dry, wet, sh };
-    }
+    /** Saturação/clipper em AudioWorklet: oversampling 2× interno, dry e wet alinhados (latência fixa MM.SAT_LAT). */
+    satMod(ch, init) { const w = this.wnode('mm-sat', ch || 2, null, init); return { in: w, out: w, node: w }; }
+
+    // ---------- parâmetros dos processadores (usados na criação E nas atualizações) ----------
+    pBusGlue() { const b = this.state.bus; return { thr: -18 + 9 - b.glue.gr / (1 - 1 / Math.max(1.01, b.glue.ratio)), ratio: b.glue.ratio, atk: b.glue.atk, rel: b.glue.rel, knee: 6, makeup: b.glue.gr * 0.5, mix: 1, bypass: false }; }
+    pBusSat() { const b = this.state.bus; return { model: b.sat.model, drive: b.sat.drive, mix: b.sat.mix }; }
+    pDrumPar() { return { thr: -32, ratio: 6, atk: 3, rel: 80, knee: 4, makeup: 10, mix: 1 }; }
+    pMDyn() { const ch = this.state.master.chain; return { bands: [{ freq: 320, q: 1.2, cut: -Math.min(0, ch.dyn.mud || 0), on: true, thr: 1 }, { freq: 3200, q: 1.3, cut: -Math.min(0, ch.dyn.harsh || 0), on: true, thr: 1 }] }; }
+    pMMb(i) { return Object.assign({ knee: 6, makeup: 0, mix: 1 }, this.state.master.chain.mb.bands[i], { bypass: false }); }
+    pMGlue() { const g = this.state.master.chain.glue; return { thr: g.thr, ratio: g.ratio, atk: g.atk, rel: g.rel, knee: 6, makeup: 0, mix: 1, bypass: false }; }
+    pMSat() { const c = this.state.master.chain.sat; return { model: c.model, drive: Math.max(0.001, c.drive), mix: c.mix }; }
+    pMClip() { const M = this.state.master; return { model: 'clip', thr: Math.min(1.9, D.db2lin(M.ceiling + (M.ceilAdj || 0) + 2 - 2.5 * (M.chain.clip.amount || 0))), mix: 1, drive: 0 }; }
+    pMLim() { const M = this.state.master, l = M.chain.lim; return { ceiling: M.ceiling + (M.ceilAdj || 0), lookahead: l.lookahead, release: l.release, releaseSlow: l.releaseSlow || l.release * 2.5, susTime: l.susTime || 1.5, inGain: 0, bypass: false }; }
+    pComp(s, k) { return Object.assign({}, s.p[k], { bypass: false }); }
+    pTrans(s) { return { attack: s.p.trans.attack, sustain: s.p.trans.sustain, bypass: false }; }
+    pSat(s) { return { model: s.p.sat.model, drive: s.p.sat.drive, mix: s.p.sat.mix }; }
 
     // ---------- buses ----------
     buildBuses() {
@@ -151,24 +125,20 @@
       this.rewire(this.busH, keys, this.mixBus, this.mixOut, (k) => {
         if (k === 'low') { const f = this.biq('lowshelf', 100); return { in: f, out: f, node: f }; }
         if (k === 'high') { const f = this.biq('highshelf', 10000); return { in: f, out: f, node: f }; }
-        if (k === 'glue') { const w = this.wnode('mm-comp', 2, 'busGlue'); return { in: w, out: w, node: w }; }
-        return this.shaper('4x');
+        if (k === 'glue') { const w = this.wnode('mm-comp', 2, 'busGlue', this.pBusGlue()); return { in: w, out: w, node: w }; }
+        return this.satMod(2, this.pBusSat());
       });
       const M = this.busH.mods;
       if (M.low) M.low.node.gain.value = b.eq.low;
       if (M.high) M.high.node.gain.value = b.eq.high;
       this.mixBus.gain.value = D.db2lin(b.trim || 0);
-      if (M.glue) {
-        const thr = -18 + 9 - b.glue.gr / (1 - 1 / Math.max(1.01, b.glue.ratio));
-        M.glue.node.port.postMessage({ thr, ratio: b.glue.ratio, atk: b.glue.atk, rel: b.glue.rel, knee: 6, makeup: b.glue.gr * 0.5, mix: 1, bypass: false });
-      }
-      if (M.sat) { M.sat.sh.curve = MM.satCurve(b.sat.model, b.sat.drive); M.sat.wet.gain.value = b.sat.mix; M.sat.dry.gain.value = 1 - b.sat.mix; }
+      if (M.glue) M.glue.node.port.postMessage(this.pBusGlue());
+      if (M.sat) M.sat.node.port.postMessage(this.pBusSat());
       // compressão paralela da bateria
       const parOn = b.drumPar.on;
       if (parOn && !this.drumPar) {
-        this.drumPar = this.wnode('mm-comp', 2, 'drumPar'); this.drumWet = this.gain(0);
+        this.drumPar = this.wnode('mm-comp', 2, 'drumPar', this.pDrumPar()); this.drumWet = this.gain(0);
         this.drumPar.connect(this.drumWet).connect(this.mixBus);
-        this.drumPar.port.postMessage({ thr: -32, ratio: 6, atk: 3, rel: 80, knee: 4, makeup: 10, mix: 1 });
       }
       if (this.drumPar) {
         if (parOn && !this.drumParOn) { this.groups.drums.connect(this.drumPar); this.drumParOn = true; }
@@ -253,20 +223,22 @@
       const c = this.ctx;
       if (k === 'eq') { const i = this.gain(1), o = this.gain(1); return { in: i, out: o }; }
       if (k === 'drive') { const g = this.gain(1); return { in: g, out: g, node: g }; }
-      if (k === 'dyn') { const w = this.wnode('mm-dyneq', 2, 'mDyn'); return { in: w, out: w, node: w }; }
-      if (k === 'glue') { const w = this.wnode('mm-comp', 2, 'mGlue'); return { in: w, out: w, node: w }; }
-      if (k === 'lim') { const w = this.wnode('mm-limiter', 2, 'mLim'); return { in: w, out: w, node: w }; }
-      if (k === 'sat') return this.shaper('2x');
+      if (k === 'dyn') { const w = this.wnode('mm-dyneq', 2, 'mDyn', this.pMDyn()); return { in: w, out: w, node: w }; }
+      if (k === 'glue') { const w = this.wnode('mm-comp', 2, 'mGlue', this.pMGlue()); return { in: w, out: w, node: w }; }
+      if (k === 'lim') { const w = this.wnode('mm-limiter', 2, 'mLim', this.pMLim()); return { in: w, out: w, node: w }; }
+      if (k === 'sat') return this.satMod(2, this.pMSat());
       if (k === 'mb') {
         const mbIn = this.gain(1), mbOut = this.gain(1);
         const lr = (type, f) => { const a = this.biq(type, f, 0.7071), b = this.biq(type, f, 0.7071); a.connect(b); return [a, b]; };
         const x1 = [lr('lowpass', 120), lr('highpass', 120)], x2 = [lr('lowpass', 2500), lr('highpass', 2500)];
-        const comps = [this.wnode('mm-comp', 2, 'mb0'), this.wnode('mm-comp', 2, 'mb1'), this.wnode('mm-comp', 2, 'mb2')];
-        mbIn.connect(x1[0][0]); x1[0][1].connect(comps[0]).connect(mbOut);
+        const comps = [0, 1, 2].map((i) => this.wnode('mm-comp', 2, 'mb' + i, this.pMMb(i)));
+        // a banda grave passa pelo all-pass equivalente ao cruzamento alto (LR4 = all-pass 2.ª ordem, Q 0,707): soma plana
+        const ap = this.biq('allpass', 2500, 0.7071);
+        mbIn.connect(x1[0][0]); x1[0][1].connect(ap).connect(comps[0]).connect(mbOut);
         mbIn.connect(x1[1][0]);
         x1[1][1].connect(x2[0][0]); x2[0][1].connect(comps[1]).connect(mbOut);
         x1[1][1].connect(x2[1][0]); x2[1][1].connect(comps[2]).connect(mbOut);
-        return { in: mbIn, out: mbOut, x1, x2, comps };
+        return { in: mbIn, out: mbOut, x1, x2, comps, ap };
       }
       if (k === 'ms') {
         const msIn = this.gain(1), split = c.createChannelSplitter(2), merge = c.createChannelMerger(2);
@@ -276,19 +248,18 @@
         msIn.connect(split);
         split.connect(this.gain(0.5), 0).connect(mid); split.connect(this.gain(0.5), 1).connect(mid);
         split.connect(this.gain(0.5), 0).connect(side); split.connect(this.gain(-0.5), 1).connect(side);
-        const hp = [this.biq('highpass', 120, BW4[0]), this.biq('highpass', 120, BW4[1])];
+        // "bass mono" correto: lateral passa por um HP Linkwitz-Riley (LR4) e o centro por um all-pass igual
+        // (LR4 LP+HP = all-pass 2.ª ordem) → acima do corte, centro e lateral mantêm a mesma fase (imagem intacta).
+        const hp = [this.biq('highpass', 120, 0.7071), this.biq('highpass', 120, 0.7071)];
+        const ap = this.biq('allpass', 120, 0.7071);
         const width = this.gain(1), widthAuto = this.gain(1), neg = this.gain(-1);
         this.chain([side, hp[0], hp[1], width, widthAuto]);
-        mid.connect(merge, 0, 0); mid.connect(merge, 0, 1);
+        ap.channelCount = 1; ap.channelCountMode = 'explicit';
+        mid.connect(ap); ap.connect(merge, 0, 0); ap.connect(merge, 0, 1);
         widthAuto.connect(merge, 0, 0); widthAuto.connect(neg).connect(merge, 0, 1);
-        return { in: msIn, out: merge, hp, width, widthAuto };
+        return { in: msIn, out: merge, hp, ap, width, widthAuto };
       }
-      if (k === 'clip') {
-        const i = this.gain(1), pre = this.gain(0.5), sh = c.createWaveShaper(), post = this.gain(2);
-        sh.oversample = '4x';
-        this.chain([i, pre, sh, post]);
-        return { in: i, out: post, sh };
-      }
+      if (k === 'clip') return this.satMod(2, this.pMClip());
     }
     connectMaster() {
       return this.rewire(this.m, this.masterKeys(), this.m.input, this.m.output, (k) => this.makeMasterMod(k));
@@ -313,20 +284,18 @@
         set('low', e.low); set('mud', e.mud); set('pres', e.pres); set('air', e.air);
         (e.ref || []).forEach((g, i) => set('r' + i, g));
       }
-      if (mods.dyn) mods.dyn.node.port.postMessage({ bands: [
-        { freq: 320, q: 1.2, cut: -Math.min(0, ch.dyn.mud || 0), on: true, thr: 1 },
-        { freq: 3200, q: 1.3, cut: -Math.min(0, ch.dyn.harsh || 0), on: true, thr: 1 },
-      ] });
+      if (mods.dyn) mods.dyn.node.port.postMessage(this.pMDyn());
       if (mods.mb) {
         mods.mb.x1.forEach((x) => x.forEach((b) => (b.frequency.value = ch.mb.xLow)));
         mods.mb.x2.forEach((x) => x.forEach((b) => (b.frequency.value = ch.mb.xHigh)));
-        ch.mb.bands.forEach((b, i) => mods.mb.comps[i].port.postMessage(Object.assign({ knee: 6, makeup: 0, mix: 1 }, b, { bypass: false })));
+        mods.mb.ap.frequency.value = ch.mb.xHigh;
+        ch.mb.bands.forEach((b, i) => mods.mb.comps[i].port.postMessage(this.pMMb(i)));
       }
-      if (mods.glue) mods.glue.node.port.postMessage({ thr: ch.glue.thr, ratio: ch.glue.ratio, atk: ch.glue.atk, rel: ch.glue.rel, knee: 6, makeup: 0, mix: 1, bypass: false });
-      if (mods.sat) { mods.sat.sh.curve = MM.satCurve(ch.sat.model, Math.max(0.001, ch.sat.drive)); mods.sat.wet.gain.value = ch.sat.mix; mods.sat.dry.gain.value = 1 - ch.sat.mix; }
-      if (mods.ms) { mods.ms.width.gain.value = (M.width || 100) / 100; mods.ms.hp.forEach((b) => (b.frequency.value = ch.ms.monoBelow || 120)); }
-      if (mods.clip) { const T = D.db2lin(M.ceiling + (M.ceilAdj || 0) + 2 - 2.5 * (ch.clip.amount || 0)); mods.clip.sh.curve = MM.clipCurve(Math.min(1.9, T)); }
-      if (mods.lim) mods.lim.node.port.postMessage({ ceiling: M.ceiling + (M.ceilAdj || 0), lookahead: ch.lim.lookahead, release: ch.lim.release, inGain: 0, bypass: false });
+      if (mods.glue) mods.glue.node.port.postMessage(this.pMGlue());
+      if (mods.sat) mods.sat.node.port.postMessage(this.pMSat());
+      if (mods.ms) { mods.ms.width.gain.value = (M.width || 100) / 100; mods.ms.hp.forEach((b) => (b.frequency.value = ch.ms.monoBelow || 120)); mods.ms.ap.frequency.value = ch.ms.monoBelow || 120; }
+      if (mods.clip) mods.clip.node.port.postMessage(this.pMClip());
+      if (mods.lim) mods.lim.node.port.postMessage(this.pMLim());
     }
 
     // ---------- stem ----------
@@ -334,7 +303,9 @@
       const c = this.ctx, n = { mods: {}, sig: null };
       if (!this.offline || this.opts.needOrig) { n.raw = this.gain(1); n.raw.connect(this.origBus); }
       n.trim = this.gain(1); n.ride = this.gain(1); n.fader = this.gain(1); n.pan = c.createStereoPanner(); n.ms = this.gain(1);
-      this.chain([n.ride, n.fader, n.pan, n.ms, this.groups[s.group] || this.groups.music]);
+      // compensação de latência (PDC): todos os stems chegam ao bus alinhados à amostra
+      n.pdc = c.createDelay(0.05); n.lat = 0;
+      this.chain([n.pdc, n.ride, n.fader, n.pan, n.ms, this.groups[s.group] || this.groups.music]);
       if (!this.offline) { n.meter = c.createAnalyser(); n.meter.fftSize = 512; n.ms.connect(n.meter); }
       this.stems[s.id] = n;
     }
@@ -360,9 +331,9 @@
       if (k.startsWith('eq') || k === 'lpf') { const f = this.biq(k === 'lpf' ? 'lowpass' : 'peaking', 1000, 0.7071); return { in: f, out: f, node: f }; }
       if (k.startsWith('dyn') || k === 'deess') { const f = this.biq('peaking', 1000, 1.4); this.kr(f.gain); return { in: f, out: f, node: f }; }
       if (k === 'alpf') { const f = this.biq('lowpass', this.nyq, 0.7071); this.kr(f.frequency); return { in: f, out: f, node: f }; }
-      if (k === 'comp' || k === 'comp2') { const w = this.wnode('mm-comp', ch, (k === 'comp' ? 'c:' : 'c2:') + s.id); return { in: w, out: w, node: w }; }
-      if (k === 'trans') { const w = this.wnode('mm-trans', ch); return { in: w, out: w, node: w }; }
-      if (k === 'sat') return this.shaper('2x');
+      if (k === 'comp' || k === 'comp2') { const w = this.wnode('mm-comp', ch, (k === 'comp' ? 'c:' : 'c2:') + s.id, this.pComp(s, k)); return { in: w, out: w, node: w }; }
+      if (k === 'trans') { const w = this.wnode('mm-trans', ch, null, this.pTrans(s)); return { in: w, out: w, node: w }; }
+      if (k === 'sat') return this.satMod(ch, this.pSat(s));
       if (k === 'duck') {
         const i = this.gain(1), o = this.gain(1), g = this.gain(1);
         const lo = [this.biq('lowpass', 120, 0.7071), this.biq('lowpass', 120, 0.7071)], hi = [this.biq('highpass', 120, 0.7071), this.biq('highpass', 120, 0.7071)];
@@ -375,8 +346,10 @@
       if (!n) return;
       const p = s.p, t = this.ctx.currentTime;
       const setp = (param, v) => { if (this.offline) param.value = v; else param.setTargetAtTime(v, t, 0.015); };
-      this.rewire(n, this.stemKeys(s), n.trim, n.ride, (k) => this.makeStemMod(s, k));
+      this.rewire(n, this.stemKeys(s), n.trim, n.pdc, (k) => this.makeStemMod(s, k));
       const M = n.mods;
+      n.lat = (n.sig || '').split(',').includes('sat') ? MM.SAT_LAT : 0;
+      if (!this._bulk) this.updatePDC();
       setp(n.trim.gain, D.db2lin(p.trim));
       if (M.hp0) { M.hp0.node.frequency.value = p.hpf.freq; M.hp1.node.frequency.value = p.hpf.freq; }
       p.eq.forEach((e, i) => {
@@ -387,14 +360,15 @@
       (p.dyn || []).forEach((d, i) => { const m = M['dyn' + i]; if (m) { m.node.frequency.value = d.freq; m.node.Q.value = d.q || 1.4; } });
       if (M.deess) { M.deess.node.frequency.value = p.deess.freq || 6500; M.deess.node.Q.value = 2.5; }
       if (M.lpf) M.lpf.node.frequency.value = Math.min(p.lpf.freq, this.nyq);
-      if (M.comp) M.comp.node.port.postMessage(Object.assign({}, p.comp, { bypass: false }));
-      if (M.comp2) M.comp2.node.port.postMessage(Object.assign({}, p.comp2, { bypass: false }));
-      if (M.trans) M.trans.node.port.postMessage({ attack: p.trans.attack, sustain: p.trans.sustain, bypass: false });
-      if (M.sat) { M.sat.sh.curve = MM.satCurve(p.sat.model, p.sat.drive); setp(M.sat.wet.gain, p.sat.mix); setp(M.sat.dry.gain, 1 - p.sat.mix); }
+      if (M.comp) M.comp.node.port.postMessage(this.pComp(s, 'comp'));
+      if (M.comp2) M.comp2.node.port.postMessage(this.pComp(s, 'comp2'));
+      if (M.trans) M.trans.node.port.postMessage(this.pTrans(s));
+      if (M.sat) M.sat.node.port.postMessage(this.pSat(s));
       if (M.duck) { M.duck.lo.concat(M.duck.hi).forEach((b) => (b.frequency.value = p.duck.freq || 120)); }
       setp(n.fader.gain, D.db2lin(p.fader));
       setp(n.pan.pan, D.clamp(p.pan, -1, 1));
-      const anySolo = this.state.stems.some((x) => x.solo && !x.removed);
+      // solo é só de escuta: os renders (premaster, master, export) ignoram-no; o mute é respeitado
+      const anySolo = !this.offline && this.state.stems.some((x) => x.solo && !x.removed);
       const on = s.mute ? 0 : anySolo && !s.solo ? 0 : 1;
       setp(n.ms.gain, on); if (n.raw) setp(n.raw.gain, on);
       // sends (criados só quando usados)
@@ -409,9 +383,17 @@
       if (dlyOn && !n.sendDly) { n.sendDly = this.gain(0); n.dlyAuto = this.gain(1); n.ms.connect(n.sendDly).connect(n.dlyAuto).connect(this.ensureFx('delay').input); }
       if (n.sendDly) setp(n.sendDly.gain, p.sendDly <= -59 ? 0 : D.db2lin(p.sendDly));
     }
+    updatePDC() {
+      const all = Object.values(this.stems);
+      const mx = all.reduce((a, n) => Math.max(a, n.lat || 0), 0);
+      all.forEach((n) => { const d = (mx - (n.lat || 0)) / this.ctx.sampleRate; if (Math.abs(n.pdc.delayTime.value - d) > 1e-9) n.pdc.delayTime.value = d; });
+      this.stemLatency = mx;
+    }
     applyAll() {
       if (!this.opts.masterOnly) {
+        this._bulk = true;
         this.state.stems.forEach((s) => this.stems[s.id] && this.applyStem(s));
+        this._bulk = false; this.updatePDC();
         this.applyBus(); this.applyFx();
       }
       this.applyMaster();

@@ -305,7 +305,22 @@ select.field option { background: #12161e; }
 .fader .cap::after { content: ''; position: absolute; left: 5px; right: 5px; top: 8px; height: 2px; background: #33404f; border-radius: 2px; }
 .fader .ghost { position: absolute; left: 50%; width: 34px; height: 20px; margin: -10px 0 0 -17px; border-radius: 6px; border: 1.5px dashed var(--acc); pointer-events: none; opacity: 0.75; }
 .meter { position: relative; border-radius: 3px; background: rgba(0, 0, 0, 0.5); overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); }
-.meter canvas { width: 100%; height: 100%; display: block; }
+.meter canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* canvases nunca ditam o layout (evita crescimento em loop em ecrãs Retina / zoom) */
+canvas { max-width: 100%; }
+.faderwrap > * { min-height: 0; }
+.faderwrap { height: 280px; flex: 1 1 280px; max-height: 520px; }
+/* botões Solo / Mute reutilizáveis */
+.sm { display: inline-flex; gap: 4px; flex: none; }
+.sm button { width: 24px; height: 22px; border-radius: 6px; border: 1px solid var(--line2); background: rgba(255,255,255,.04); color: var(--muted); font: 700 11px/1 var(--mono); padding: 0; }
+.sm button:hover { color: var(--text); border-color: var(--line3); }
+.sm button.s.on { background: rgba(251,191,36,.18); color: var(--warn); border-color: rgba(251,191,36,.45); }
+.sm button.m.on { background: rgba(251,113,133,.18); color: var(--bad); border-color: rgba(251,113,133,.45); }
+.stembar { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 10px; }
+.stembar .sb { display: inline-flex; align-items: center; gap: 7px; padding: 5px 6px 5px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); white-space: nowrap; font-size: 12.5px; flex: none; }
+.stembar .sb i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.stembar .sb.muted-s { opacity: .5; }
+.solo-clear { height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid rgba(251,191,36,.45); background: rgba(251,191,36,.12); color: var(--warn); font-size: 12px; font-weight: 700; }
 .strip .db { font-family: var(--mono); font-size: 14px; text-align: center; margin-top: 6px; }
 .strip .send { font-family: var(--mono); font-size: 10.5px; color: var(--dim); text-align: center; height: 15px; }
 .strip .btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 6px; }

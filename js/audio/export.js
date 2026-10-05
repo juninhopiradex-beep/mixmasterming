@@ -266,7 +266,9 @@
     add('clicks', m.clicks ? 'warn' : 'ok', 'Cliques / pops', m.clicks ? `${m.clicks} possível(eis) clique(s) detetado(s)` : '0 detetados');
     const gr = state.masterGR || 0;
     add('overlim', m.plr > 7 ? 'ok' : 'warn', 'Over-limiting', m.plr > 7 ? `PLR ${fmt(m.plr)} dB — dinâmica preservada` : `PLR ${fmt(m.plr)} dB: limiting pesado${gr ? ` (GR ~${fmt(gr)} dB)` : ''}. Considera alvo ${fmt(M.target - 1, 0)}.`);
-    add('loud', Math.abs(m.lufs - M.target) <= 0.3 ? 'ok' : 'warn', 'Loudness vs alvo', `${fmt(m.lufs)} vs ${fmt(M.target)} LUFS (±0,3)`);
+    if (Math.abs(m.lufs - M.target) <= 0.3) add('loud', 'ok', 'Loudness vs alvo', `${fmt(m.lufs)} vs ${fmt(M.target)} LUFS (±0,3)`);
+    else if (M.reached === false && m.lufs < M.target) add('loud', 'warn', 'Alvo não atingido sem esmagar', `${fmt(m.lufs)} vs ${fmt(M.target)} LUFS. Acima disto o limiter só destrói transientes. Para mais loudness: estilo Punchy/Aggressive (clipper) ou alvo ${fmt(Math.round(m.lufs))}.`);
+    else add('loud', 'warn', 'Loudness vs alvo', `${fmt(m.lufs)} vs ${fmt(M.target)} LUFS (±0,3)`);
     if (m.sections && m.sections.length) {
       const ch = m.sections.filter((s) => /Refr/.test(s.name)).map((s) => s.lufs);
       const diff = ch.length > 1 ? Math.max(...ch) - Math.min(...ch) : 0;

@@ -33,7 +33,7 @@
       </div>
       <div class="db" data-dbv="${s.id}">${UI.fmtNum(p.fader)}</div>
       <div class="send">${send}</div>
-      <div class="btns"><button class="s ${s.solo ? 'on' : ''}" data-solo="${s.id}" title="Solo">S</button><button class="m ${s.mute ? 'on' : ''}" data-mute="${s.id}" title="Mute">M</button><button class="r ${autoOn ? 'on' : ''}" data-read="${s.id}" title="Ler automação">R</button></div>
+      <div class="btns"><button class="s ${s.solo ? 'on' : ''}" data-ssolo="${s.id}" title="Solo">S</button><button class="m ${s.mute ? 'on' : ''}" data-smute="${s.id}" title="Mute">M</button><button class="r ${autoOn ? 'on' : ''}" data-read="${s.id}" title="Ler automação">R</button></div>
     </div>`;
   }
 
@@ -125,8 +125,8 @@
           <div class="eyebrow">Sessão</div>
           <div class="mono" style="font-size:17px;margin-top:8px">${st.music.bpm} BPM · ${st.music.key} · ${st.music.meter}</div>
           <div class="muted small" style="margin-top:2px">${stems.length} stems · ${ref ? 'Referência carregada' : 'Sem referência'} · ${st.music.genre}</div>
-          <div class="row" style="justify-content:space-between;margin:22px 0 8px"><div class="eyebrow">Stems</div><span class="eyebrow">Conf. · H</span></div>
-          <div class="stemlist">${stems.map((s) => `<div class="it ${app.selected === s.id ? 'sel' : ''}" data-sel="${s.id}"><span class="dot" style="background:${UI.colorOf(s)}"></span><div style="min-width:0"><b>${UI.esc(s.label)}</b><small>${UI.esc(MM.ROLES[s.role].pt)}</small></div><span class="row" style="gap:6px"><button class="lockbtn ${s.locked ? 'on' : ''}" data-lock="${s.id}" title="${s.locked ? 'Desbloquear' : 'Bloquear: a IA não mexe'}">${UI.icon(s.locked ? 'lock' : 'unlock')}</button><span class="c">${Math.round(s.conf * 100)}%</span></span><span class="h">${s.hier}</span></div>`).join('')}</div>
+          <div class="row" style="justify-content:space-between;margin:22px 0 8px"><div class="eyebrow">Stems</div><span class="eyebrow">Solo · Mute · H</span></div>
+          <div class="stemlist">${stems.map((s) => `<div class="it ${app.selected === s.id ? 'sel' : ''}" data-sel="${s.id}"><span class="dot" style="background:${UI.colorOf(s)}"></span><div style="min-width:0"><b>${UI.esc(s.label)}</b><small>${UI.esc(MM.ROLES[s.role].pt)}</small></div><span class="row" style="gap:6px">${UI.sm(s)}<button class="lockbtn ${s.locked ? 'on' : ''}" data-lock="${s.id}" title="${s.locked ? 'Desbloquear' : 'Bloquear: a IA não mexe'}">${UI.icon(s.locked ? 'lock' : 'unlock')}</button></span><span class="h" title="Confiança ${Math.round(s.conf * 100)} %">${s.hier}</span></div>`).join('')}</div>
           <button class="btn" style="width:100%;margin-top:14px;border-style:dashed" id="addSt">${UI.icon('plus')}Adicionar stems</button>
         </div></aside>
         <main><div class="mixer">${stems.map((s) => stripHTML(app, s)).join('')}${masterStripHTML(app)}</div></main>
@@ -136,12 +136,10 @@
     mount(app, root) {
       const st = app.state;
       const graph = () => app.engine.graph;
-      root.querySelectorAll('[data-sel]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('[data-lock]')) return; app.selected = el.dataset.sel; app.refresh(); }));
+      root.querySelectorAll('[data-sel]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('[data-lock],.sm')) return; app.selected = el.dataset.sel; app.refresh(); }));
       root.querySelectorAll('[data-strip]').forEach((el) => el.addEventListener('pointerdown', (e) => { if (app.selected !== el.dataset.strip && !e.target.closest('.fader,.panknob,[data-mod],button')) { app.selected = el.dataset.strip; app.refresh(); } }));
       root.querySelectorAll('[data-lock]').forEach((b) => (b.onclick = () => app.change('Bloquear stem', () => { const s = app.stem(b.dataset.lock); s.locked = !s.locked; }, {})));
       root.querySelector('#addSt').onclick = () => app.pickFiles();
-      root.querySelectorAll('[data-solo]').forEach((b) => (b.onclick = () => app.change('Solo', () => { const s = app.stem(b.dataset.solo); s.solo = !s.solo; }, { allStems: true })));
-      root.querySelectorAll('[data-mute]').forEach((b) => (b.onclick = () => app.change('Mute', () => { const s = app.stem(b.dataset.mute); s.mute = !s.mute; }, { allStems: true })));
       root.querySelectorAll('[data-read]').forEach((b) => (b.onclick = () => app.change('Leitura de automação', () => {
         const lanes = st.automation.filter((l) => l.target.id === b.dataset.read);
         const on = !lanes.some((l) => l.enabled.ai);
