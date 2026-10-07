@@ -71,6 +71,7 @@
    */
   I.measurePost = async function (st, onProgress, opts) {
     opts = opts || {};
+    if (MM.tune) await MM.tune.ensure(st);
     const all = stemsOf(st), sr = st.sampleRate;
     // cache por stem: só se renderizam os stems cuja assinatura mudou desde a última medição
     const sigs = Object.fromEntries(all.map((s) => [s.id, I.stemSig(st, s)]));

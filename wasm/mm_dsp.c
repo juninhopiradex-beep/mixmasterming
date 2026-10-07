@@ -118,3 +118,40 @@ double tpRefine(const float *x, int n, int c, int H, int NF, const double *tab) 
   if (w > v) v = w; if (a > v) v = a;
   return v;
 }
+
+/* ---------- YIN (deteção de pitch) — função de diferença direta com SIMD ----------
+ * x: sinal já decimado (~16 kHz) · por trama: per = período (amostras, 0 = sem pitch), conf = 1 − CMNDF mínimo, rms
+ * d: rascunho com tmax+2 floats. W múltiplo de 4. */
+#include <wasm_simd128.h>
+static float sqrtf_(float v) { return __builtin_sqrtf(v); }
+EXPORT("yin")
+int yin(const float *x, int n, int hop, int W, int tmin, int tmax, float thr, float gate, float *per, float *conf, float *rms, float *d) {
+  int frames = (n - W - tmax - 2) / hop + 1;
+  if (frames < 0) frames = 0;
+  for (int f = 0; f < frames; f++) {
+    const float *a = x + f * hop;
+    v128_t e4 = wasm_f32x4_splat(0);
+    for (int i = 0; i < W; i += 4) { v128_t v = wasm_v128_load(a + i); e4 = wasm_f32x4_add(e4, wasm_f32x4_mul(v, v)); }
+    float e = wasm_f32x4_extract_lane(e4, 0) + wasm_f32x4_extract_lane(e4, 1) + wasm_f32x4_extract_lane(e4, 2) + wasm_f32x4_extract_lane(e4, 3);
+    float r = sqrtf_(e / W);
+    rms[f] = r;
+    if (r < gate) { per[f] = 0; conf[f] = 0; continue; }
+    d[0] = 1;
+    float run = 0;
+    for (int t = 1; t <= tmax + 1; t++) {
+      v128_t s4 = wasm_f32x4_splat(0);
+      const float *b = a + t;
+      for (int i = 0; i < W; i += 4) { v128_t df = wasm_f32x4_sub(wasm_v128_load(a + i), wasm_v128_load(b + i)); s4 = wasm_f32x4_add(s4, wasm_f32x4_mul(df, df)); }
+      float s = wasm_f32x4_extract_lane(s4, 0) + wasm_f32x4_extract_lane(s4, 1) + wasm_f32x4_extract_lane(s4, 2) + wasm_f32x4_extract_lane(s4, 3);
+      run += s;
+      d[t] = run > 0 ? s * t / run : 1;
+    }
+    int best = -1;
+    for (int t = tmin; t <= tmax; t++) { if (d[t] < thr) { while (t + 1 <= tmax && d[t + 1] < d[t]) t++; best = t; break; } }
+    if (best < 0) { float m = 1e9f; for (int t = tmin; t <= tmax; t++) if (d[t] < m) { m = d[t]; best = t; } }
+    float p = (float)best;
+    if (best > 1 && best < tmax + 1) { float y0 = d[best - 1], y1 = d[best], y2 = d[best + 1], den = y0 - 2 * y1 + y2; if (den > 1e-9f || den < -1e-9f) { float o = 0.5f * (y0 - y2) / den; if (o > -1 && o < 1) p += o; } }
+    per[f] = p; conf[f] = 1 - d[best];
+  }
+  return frames;
+}

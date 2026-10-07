@@ -24,7 +24,7 @@
     return `<div class="strip ${sel ? 'sel' : ''} ${s.mute ? 'muted-s' : ''}" style="--c:${c}" data-strip="${s.id}">
       <div class="name" title="${UI.esc(s.label)}">${UI.esc(s.short || s.label)}${s.p.polarity ? '<span class="phbadge" title="Polaridade invertida (vista Análise → Fase)">Ø</span>' : ''}${+s.p.align > 0 ? `<span class="phbadge" title="Atrasado ${UI.fmtNum(+s.p.align, 2)} ms para alinhar a fase">+${UI.fmtNum(+s.p.align, 1)}ms</span>` : ''}${s.locked ? UI.icon('lock') : ''}</div>
       <div class="meta">${Math.round(s.conf * 100)}% · ${s.hier}</div>
-      <div class="mods">${mods.map(([k, l]) => `<div class="mod ${isManual(s, k) ? 'man' : 'ai'}" data-mod="${k}" data-sid="${s.id}">${l}</div>`).join('') || '<div class="dim tiny" style="text-align:center;margin-top:30px">sem processamento</div>'}</div>
+      <div class="mods">${MM.tune && (MM.ROLES[s.role].fam === 'vocal' || (s.p.tune && Object.keys(s.p.tune.edits || {}).length)) ? `<div class="mod tunemod ${MM.tune.hasEdits(s) ? 'man' : ''}" data-tune="${s.id}" title="Editor de voz: afinação, tempo e expressão nota a nota (antes do resto da cadeia)">VOZ${MM.tune.hasEdits(s) ? ' ●' : ''}</div>` : ''}${mods.map(([k, l]) => `<div class="mod ${isManual(s, k) ? 'man' : 'ai'}" data-mod="${k}" data-sid="${s.id}">${l}</div>`).join('') || '<div class="dim tiny" style="text-align:center;margin-top:30px">sem processamento</div>'}</div>
       <div class="panrow"><div class="panknob" data-pan="${s.id}"><div class="tr"></div><div class="ctr"></div><div class="th" style="left:${((p.pan + 1) / 2) * 100}%"></div></div><div class="panlbl">${MM.panLabel(p.pan)}</div></div>
       <div class="faderwrap">
         <div class="scale">${[6, 0, -6, -12, -24, -40, -60].map((d) => `<span style="top:${db2pos(d) * 100}%">${d > 0 ? '+' + d : d}</span>`).join('')}</div>
@@ -167,6 +167,7 @@
         const setPan = (v) => { s.p.pan = Math.round(v * 100) / 100; s.manual.pan = true; th.style.left = ((s.p.pan + 1) / 2) * 100 + '%'; lbl.textContent = MM.panLabel(s.p.pan); graph() && graph().applyStem(s); };
         UI.drag(el, { axis: 'x', get: () => s.p.pan, set: setPan, min: -1, max: 1, sens: 0.02, start: () => MM.commit(st, 'Pan ' + s.label), end: () => { st.dirty.mix = true; app.renderTop(); app.saveSoon(); }, reset: () => setPan(s.ai ? s.ai.pan : 0) });
       });
+      root.querySelectorAll('[data-tune]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); app.tuneStem = el.dataset.tune; app.go('tune'); }));
       root.querySelectorAll('[data-mod]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); V.openEditor(app, app.stem(el.dataset.sid), el.dataset.mod, el); }));
       mountSide(app, root);
     },
@@ -219,7 +220,7 @@
     const ex = side.querySelector('#explainT'); if (ex) ex.onchange = () => { app.explainOn = ex.checked; app.refresh(); };
     const s = app.stem();
     const lk = side.querySelector('#lockS'); if (lk) lk.onclick = () => app.change('Bloquear stem', () => { s.locked = !s.locked; }, {});
-    const rs = side.querySelector('#resetS'); if (rs) rs.onclick = () => { if (!s.ai) return; app.change('Reset IA ' + s.label, () => { s.p = JSON.parse(JSON.stringify(s.ai)); s.manual = {}; }, { stem: s.id }); };
+    const rs = side.querySelector('#resetS'); if (rs) rs.onclick = () => { if (!s.ai) return; app.change('Reset IA ' + s.label, () => { const tune = s.p.tune; s.p = JSON.parse(JSON.stringify(s.ai)); if (tune) s.p.tune = tune; else delete s.p.tune; s.manual = {}; }, { stem: s.id }); };
     const am = side.querySelector('#addMod');
     if (am) am.onclick = () => {
       const opts = MODS.filter(([, , on]) => !on(s.p)).map(([k]) => k);

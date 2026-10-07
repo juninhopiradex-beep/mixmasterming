@@ -10,7 +10,7 @@
   });
 
   const NAV = [
-    ['import', 'Importar', 'upload'], ['mixer', 'Mixer', 'sliders'], ['arrange', 'Arranjo', 'layers'], ['analysis', 'Análise', 'activity'],
+    ['import', 'Importar', 'upload'], ['mixer', 'Mixer', 'sliders'], ['arrange', 'Arranjo', 'layers'], ['tune', 'Voz', 'mic'], ['analysis', 'Análise', 'activity'],
     ['automation', 'Automação', 'auto'], ['master', 'Master', 'gauge'], ['compare', 'Comparar', 'compare'], ['refs', 'Referências', 'target'],
     ['export', 'Exportar', 'download'],
   ];
@@ -431,7 +431,7 @@
       if (rec.album) st.album = rec.album; if (rec.meta) st.meta = rec.meta;
       for (const r of rec.refs || []) if (r.raw) { const b = await App.engine.ctx.decodeAudioData(r.raw.slice(0)); const chs = [b.getChannelData(0).slice(), (b.numberOfChannels > 1 ? b.getChannelData(1) : b.getChannelData(0)).slice()]; await App.addReference(r.name, chs, r.raw, true, r.id); }
       st.stage = 'review';
-      App.engine.rebuild(st);
+      App.engine.rebuild(st); App.syncTune();
       App.selected = (st.stems.find((s) => s.role === 'Lead Vocal') || st.stems[0]).id;
       App.busy = false; App.view = 'mixer';
       App.render();
@@ -546,12 +546,25 @@
   App.undo = function () {
     const l = MM.undo(App.state);
     if (!l) { UI.toast('Nada para desfazer.', 'warn', 1500); return; }
-    App.engine.rebuild(App.state); App.refresh(); UI.toast('Desfeito: ' + l, 'ok', 1800);
+    App.engine.rebuild(App.state); App.refresh(); UI.toast('Desfeito: ' + l, 'ok', 1800); App.syncTune();
   };
   App.redo = function () {
     const l = MM.redo(App.state);
     if (!l) { UI.toast('Nada para refazer.', 'warn', 1500); return; }
-    App.engine.rebuild(App.state); App.refresh(); UI.toast('Refeito: ' + l, 'ok', 1800);
+    App.engine.rebuild(App.state); App.refresh(); UI.toast('Refeito: ' + l, 'ok', 1800); App.syncTune();
+  };
+  /** Refaz a voz editada (editor de voz) quando as edições mudam; o motor passa a tocá-la de imediato. */
+  App.syncTune = async function () {
+    if (!MM.tune) return false;
+    if (App._tuning) { App._tuneAgain = true; return App._tuning; }
+    App._tuning = (async () => {
+      let changed = false;
+      do { App._tuneAgain = false; try { changed = (await MM.tune.ensure(App.state)) || changed; } catch (e) { console.error(e); UI.toast('Editor de voz: ' + e.message, 'err'); } } while (App._tuneAgain);
+      if (changed && App.engine.playing) App.engine.reschedule();
+      if (changed && App.curView && App.curView.onTuned) App.curView.onTuned(App);
+      return changed;
+    })();
+    try { return await App._tuning; } finally { App._tuning = null; }
   };
 
   /** Solo / Mute com efeito imediato no motor; Alt/⌘+clique = solo exclusivo. */
@@ -617,7 +630,7 @@
   App.loadVersion = function (id) {
     const v = MM.loadVersion(App.state, id);
     if (!v) return;
-    App.engine.rebuild(App.state); App.updateLM();
+    App.engine.rebuild(App.state); App.updateLM(); App.syncTune();
     UI.toast(`${v.name} carregada${v.masterBuf ? '' : ' (renderiza para medir)'}.`, 'ok', 2200);
     App.render();
   };

@@ -19,6 +19,7 @@ O áudio **nunca sai do teu computador**: análise, processamento, render e expo
 | **Mistura automática** | Gain staging (−20 LUFS ativos, sem clipping), balanço por fader segundo o género e a hierarquia (Primary/Secondary/Background), panorâmica, HPF, EQ corretiva (lama, boxiness, nasal, aspereza, ressonâncias) e criativa, compressão por instrumento (incl. série na voz), transient shaper, saturação contextual (nunca em todos os canais), de-esser dinâmico, reverbs (plate/room/hall) e delay sincronizado com ducking, mix bus com glue e compressão paralela da bateria. |
 | **Anti-masking** | Análise contínua de conflitos de frequência entre stems (por bloco de ~100 ms e por banda de terço de oitava). Corrige com **EQ dinâmico** que só atua quando o elemento protagonista toca, e **sidechain multibanda** kick → baixo (<120 Hz). |
 | **Automação** | Vocal rider frase a frase, send de reverb por secção, filtro do pad, delay throws, largura do master (escritos pela IA). Ferramentas de edição: **lápis, linha, formas sincronizadas ao BPM** (seno, triângulo, quadrada, rampas, aleatória) e **borracha** (Alt = apaga também a IA no troço); grelha livre/batida/compasso. Lanes novas por stem: **volume, pan, envio de reverb, envio de delay, passa-baixo, passa-alta, ganho de uma banda de EQ (existente ou nova) e threshold do compressor**; efeitos: **tamanho do reverb** (crossfade entre resposta curta, normal e longa) e **feedback do delay**; no master: **largura e volume/fade**. **Automação aprendida por estilo:** o treino mede como o refrão abre face ao verso (loudness, largura, agudos, voz vs instrumental e — com stems pós-fader — cada instrumento) e a IA escreve essa automação nas sessões desse estilo, descontando o que o arranjo dos teus stems já faz. A edição manual prevalece sobre a IA. |
+| **Voz · editor nota a nota** | Para os stems de voz, **antes** da cadeia do mixer: deteção de pitch a cada 5 ms (WebAssembly), notas e sibilantes num piano roll com a escala da música. Ferramentas **Híbrida, Pitch, Mover, Esticar, Dividir, Formantes, Vibrato e Ganho**; **Pitch Centre**, endireitar drift, vibrato original 0–250 % e vibrato acrescentado, **anti-artefactos**, **sibilantes**, **match energy**, **link/glide**, tonalidade e escala (13 escalas, deteção na voz), **harmonia** diatónica como stem novo, repor, A/B e **sugestão da IA** (centra só as notas desafinadas, sem tocar no vibrato nem nos ornamentos). Só as zonas editadas são processadas — o resto da gravação passa bit a bit. |
 | **Arranjo** | Pistas por stem com zoom (Ctrl/⌘ + roda, Shift + roda para deslocar). Estrutura editável: arrastar fronteiras (encaixa no compasso; Shift = livre), renomear (duplo clique), dividir no cursor, juntar, remover, repor a deteção da IA — a automação por secção acompanha. **Mute por secção** (botão direito numa pista ou chips “Calar nesta secção”), respeitado na escuta, no master e nos exports. |
 | **Análise** | Mapa de frequências **Antes / Depois / Mudança tonal**, por secção — o “Depois” é medido num render dos stems processados (EQ, dinâmica, saturação, fader, automação, mutes). Masking no tempo (por secção, antes → depois), botão **Ouvir o conflito** (solo dos dois + loop), A/B com/sem correção e correção editável (corte, frequência, Q). Tonalidade do master vs perfil do estilo treinado e vs referência. **Fase entre stems** (kick × baixo, camadas, pares L/R) com inversão de polaridade e alinhamento ao sub-milissegundo. Compatibilidade mono por stem. Profundidade percebida (reverb + pre-delay, nível, brilho, compressão). Histórico do score por versão. |
 | **Master** | **Estilo musical** (Kizomba, Semba, Kuduro, Afro House, House, Ghetto Zouk, Tarraxinha, Zouk…) com o perfil aprendido na aba Estilos — curva tonal, loudness, densidade, largura, graves mono — mais o **caráter** (Transparent, Warm, Punchy…). Cadeia adaptativa e reordenável: EQ tonal, EQ dinâmico, multibanda (crossovers Linkwitz-Riley), glue, saturação, M/S com graves em mono, soft clipper e limiter true-peak com look-ahead. Alvo LUFS iterativo (−14 a −7 ou custom) com correção automática de true peak. 10 estilos (Transparent, Warm, Punchy, Wide, Aggressive, Analog, Modern, Streaming, Club, Radio). |
@@ -49,6 +50,14 @@ Inclui uma **sessão de demonstração** (Kizomba, 94 BPM, F♯ menor, 15 stems 
 
 ---
 
+### Editor de voz (v1.7)
+1. **Voz** no menu (ou o botão **VOZ** no canal da voz no Mixer). A primeira vez, a voz é analisada (~2 s para 2½ min) e a análise fica guardada no projeto.
+2. Cada nota é um bloco no piano roll; a linha laranja é o pitch que vai soar e o tracejado o original. As barras amarelas mostram quanto falta para a nota da escala.
+3. **Híbrida**: arrastar na vertical muda a nota (encaixa na escala; Alt = livre), na horizontal move no tempo, pelas pontas estica; duplo clique centra. ↑ ↓ meio-tom (Alt: 10 cents), ← → mover, Delete cala, Ctrl+A tudo.
+4. No painel da direita: centro, drift, vibrato original e acrescentado, formantes, ganho, mover, duração e glide da nota ou da seleção.
+5. **Sugestão da IA** centra as notas desafinadas (intensidade ajustável) e deixa o resto; **Harmonia** cria um stem de backing vocal com 3ª/4ª/5ª/6ª/oitava na escala.
+6. A voz editada entra no stem antes do EQ, compressão e sends — mistura, master, exports e medições já a usam. O monitor **Original** (tecla 1) continua a ser a gravação crua. Tudo se desfaz com Ctrl+Z e fica guardado no projeto.
+
 ### Mix Quality Score ancorado (v1.6)
 O score já não compara a mistura com as próprias decisões da IA. Cada critério usa a âncora externa mais forte disponível e mostra-a na Análise:
 1. **estilo treinado** — balanço por papel, curva tonal ± desvio, PLR, largura e graves mono medidos nas tuas músicas aprovadas;
@@ -74,13 +83,14 @@ Sem isto, tudo continua 100 % local. Com isto: portal de envio para clientes, mo
 Segurança: a chave *anon* é pública por natureza. As regras RLS só deixam os clientes **criar** envios pendentes e **enviar** áudio para `incoming/`; não conseguem ler nada. Só o email da tabela `admins` lê, aprova, apaga e publica. Ao aprovar, o áudio é apagado do servidor e a biblioteca partilhada guarda só medidas. Recomendado: em Authentication → Settings, desliga o registo público de utilizadores e ativa CAPTCHA se o portal começar a receber spam.
 
 ### Velocidade (v1.6)
-- **WebAssembly** (`wasm/mm_dsp.c`, < 4 KB, embutido em `js/core/wasm-bin.js` — sem build para o utilizador): FFT real das análises e medições ~3× mais rápida, true peak ~2,9×. O loudness ficou em JavaScript, que é mais rápido para esse filtro recursivo (medido). Recompilar: `npm run build:wasm` (precisa de clang com alvo wasm32).
+- **WebAssembly** (`wasm/mm_dsp.c`, ~5 KB, embutido em `js/core/wasm-bin.js` — sem build para o utilizador): FFT real das análises e medições ~3× mais rápida, true peak ~2,9×, deteção de pitch do editor de voz com SIMD. O loudness ficou em JavaScript, que é mais rápido para esse filtro recursivo (medido). Recompilar: `npm run build:wasm` (precisa de clang com alvo wasm32).
 - **Cache por stem**: o primeiro render guarda a saída dos stems pesados (até ao fader); nos renders seguintes os stems inalterados não voltam a ser processados — mexer num stem só re-renderiza esse. A medição “Depois” também só mede os stems que mudaram. Orçamento de memória automático (Definições → Motor de IA, com botão para limpar).
 
 ### Testes automáticos
 ```bash
 npm install              # só para os testes (Playwright); a app não precisa
 npm run test:dsp         # DSP, formatos, entrega/DDP, wasm, modelo do engenheiro (Node, sem browser)
+npm run test:tune        # editor de voz: precisão de pitch, formantes, tempo, ganho, harmonia (voz sintética)
 npm run test:e2e         # sessão demo completa no Chromium
 npm run test:cloud       # portal → aprovação → biblioteca, contra um Supabase falso (tests/mock-supabase.py)
 npm run bench            # JavaScript vs WebAssembly
@@ -159,6 +169,7 @@ js/audio/album.js            modo álbum, CUE, DDP 2.0 e verificação
 js/audio/insight.js          medição "Depois", masking no tempo, fase, tonalidade
 js/audio/stemcache.js        cache por stem dos renders
 js/audio/engineer.js         modelo do engenheiro (o teu arquivo)
+js/audio/tune.js             editor de voz: pitch (YIN), notas, escalas, marcas de período e render PSOLA
 js/vendor/lame.min.js        codificador MP3 lamejs (LGPL — ver js/vendor/LAMEJS-LICENSE.txt)
 js/audio/demo.js             sessão de demonstração sintetizada
 js/ui/…                      interface (vistas: importar, mixer, arranjo, análise, automação, master, comparar, referências, exportar, definições, plugin, estilos, álbum)
@@ -177,6 +188,7 @@ docs/AUDITORIA.md            auditoria de áudio: causas do som "de tubo", corre
 - **“IA” nesta versão = DSP + regras de engenharia + estatística + aprendizagem** (perfis por estilo, classificador gaussiano e o modelo do engenheiro — regressão ridge — treinados com as tuas músicas). Não há redes neuronais profundas. A classificação, as decisões de mistura e o assistente são determinísticos e explicáveis. A arquitetura está preparada para trocar cada decisor por um modelo treinado (ver `docs/ARQUITETURA.md`, secções 4, 5 e 25–28).
 - O **MP3** usa o codificador `lamejs` (LGPL), incluído em `js/vendor/` — funciona offline. A pré-escuta AAC depende do browser e do sistema (o Chromium em Linux não tem codificador AAC; a app só mostra os codecs disponíveis).
 - Sessões muito longas (30+ stems de 6+ minutos) podem esgotar a memória do separador; usa a qualidade de análise “Rápida”.
+- O editor de voz é **monofónico** (uma nota de cada vez — voz, sopros, baixo); acordes e coros num só stem não são separados. Correções grandes (mais de ±5 meios-tons) começam a soar processadas, como em qualquer PSOLA.
 - O browser não permite plugins **VST3/AU/AAX**. O motor foi desenhado para ser portado para JUCE (C++) com a mesma arquitetura — ver roadmap.
 - Os projetos, a biblioteca de estilos e o modelo do engenheiro ficam guardados no IndexedDB **deste browser** (Definições → Privacidade para apagar projetos). Para levar um projeto para outro computador usa o ficheiro `.mixmind`. A biblioteca pode ser partilhada pelo backend opcional ou por `styles/library.json`.
 - A cache por stem dá um resultado igual ao render completo a −98 dB (diferenças de arredondamento em vírgula flutuante), inaudível.

@@ -1,12 +1,13 @@
 /* MIXMIND — ponte para os núcleos DSP em WebAssembly (wasm/mm_dsp.c → js/core/wasm-bin.js).
- * O módulo tem < 4 KB, por isso compila de forma síncrona logo ao carregar (permitido no browser).
+ * Compila de forma síncrona quando o ambiente deixa (Node, módulos pequenos); senão, assíncrona logo ao carregar
+ * (MM.wasm.whenReady) — até lá, tudo corre em JavaScript.
  * Sem WebAssembly (ou com MM.WASM_OFF = true) tudo continua a funcionar com as versões em JavaScript.
  *
  * Memória: alocador simples por "concessões" (leases). Uma STFT longa mantém o canal na memória do wasm
  * enquanto cede a vez à interface; outras operações alocam acima das concessões vivas. */
 (function () {
   const MM = (window.MM = window.MM || {});
-  const W = (MM.wasm = { ready: false, stats: { calls: 0 } });
+  const W = (MM.wasm = { ready: false, stats: { calls: 0 }, whenReady: Promise.resolve(false) });
   const BASE = 256 * 1024; // acima da pilha e dos dados estáticos do módulo
   let inst = null, mem = null;
   const live = new Map();
@@ -14,15 +15,12 @@
 
   function init() {
     if (W.ready || MM.WASM_OFF || typeof WebAssembly === 'undefined' || !MM.WASM_B64) return false;
-    try {
-      const s = atob(MM.WASM_B64), u8 = new Uint8Array(s.length);
-      for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
-      inst = new WebAssembly.Instance(new WebAssembly.Module(u8), {});
-      mem = inst.exports.memory;
-      W.x = inst.exports;
-      W.ready = true;
-    } catch (e) { console.warn('WebAssembly indisponível — a usar JavaScript', e); W.ready = false; }
-    return W.ready;
+    const s = atob(MM.WASM_B64), u8 = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
+    const done = (i) => { inst = i; mem = inst.exports.memory; W.x = inst.exports; W.ready = true; return true; };
+    try { return done(new WebAssembly.Instance(new WebAssembly.Module(u8), {})); } catch (e) { /* o Chrome não compila módulos > 4 KB de forma síncrona na thread principal */ }
+    W.whenReady = WebAssembly.instantiate(u8, {}).then((r) => done(r.instance)).catch((e) => { console.warn('WebAssembly indisponível — a usar JavaScript', e); return false; });
+    return false;
   }
   // topo = fim da concessão mais alta ainda viva (tabelas persistentes incluídas)
   const top = () => { let t = BASE; live.forEach((r) => { if (r.end > t) t = r.end; }); return t; };
@@ -68,5 +66,5 @@
     });
   };
   W.init = init;
-  init();
+  if (init()) W.whenReady = Promise.resolve(true);
 })();

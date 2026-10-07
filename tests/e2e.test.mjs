@@ -91,8 +91,26 @@ await test('velocidade: WebAssembly ativo e cache por stem reutiliza stems inalt
   });
   ok(r.wasm, 'wasm'); ok(r.frozen > 0, 'stems congelados: ' + r.frozen); ok(r.diff < -80, 'diferença ' + r.diff.toFixed(1) + ' dB');
 });
+await test('editor de voz: analisa a voz, a nota editada entra no render antes do mixer, Ctrl+Z repõe', async () => {
+  await J(() => MM.app.go('tune'));
+  await page.waitForFunction(() => document.querySelector('#tnCv'), null, { timeout: 120000 });
+  const r = await J(async () => {
+    const st = MM.app.state, s = st.stems.find((x) => x.id === MM.app.tn.stem), sr = st.sampleRate, T = MM.tune;
+    const n = T.notes(s).filter((x) => x.kind === 'v' && x.t1 - x.t0 > 0.25)[3];
+    const a = await MM.render(st, { out: 'premaster', sr, filter: (x) => x.id === s.id });
+    MM.commit(st, 'teste'); T.edit(s, n.id).shift = 200; await MM.app.syncTune();
+    const b = await MM.render(st, { out: 'premaster', sr, filter: (x) => x.id === s.id });
+    const A = a.getChannelData(0), B = b.getChannelData(0), seg = (x, t0, t1) => { let m = 0; for (let i = Math.round(t0 * sr); i < Math.round(t1 * sr); i++) m = Math.max(m, Math.abs(x[i])); return m; };
+    let d = 0; for (let i = Math.round((n.t0 + 0.05) * sr); i < Math.round((n.t1 - 0.05) * sr); i++) d = Math.max(d, Math.abs(A[i] - B[i]));
+    MM.app.undo(); await MM.app.syncTune();
+    return { notes: T.notes(s).length, key: T.keyLabel(T.keyOf(st, s)), changed: d / (seg(A, n.t0, n.t1) + 1e-9), tuned: !!s.tuneBuf };
+  });
+  ok(r.notes > 50, 'notas ' + r.notes);
+  ok(r.changed > 0.1, 'a nota editada mudou no render (' + r.changed.toFixed(2) + ')');
+  ok(!r.tuned, 'Ctrl+Z repõe a voz original');
+});
 await test('todas as vistas abrem sem erros', async () => {
-  for (const v of ['mixer', 'arrange', 'analysis', 'automation', 'master', 'compare', 'refs', 'export', 'settings', 'plugin', 'styles', 'album']) { await J((x) => MM.app.go(x), v); await page.waitForTimeout(400); }
+  for (const v of ['mixer', 'arrange', 'tune', 'analysis', 'automation', 'master', 'compare', 'refs', 'export', 'settings', 'plugin', 'styles', 'album']) { await J((x) => MM.app.go(x), v); await page.waitForTimeout(400); }
   ok(!errors.length, errors.join(' | '));
 });
 await test('projeto completo (.mixmind): exportar e reabrir mantém versões, mutes e automação', async () => {

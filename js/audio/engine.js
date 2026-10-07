@@ -663,10 +663,13 @@
           if (offset - sh < src.buffer.duration) { src.start(when + Math.max(0, sh - offset), Math.max(0, offset - sh)); this.sources.push(src); }
           return;
         }
+        // voz editada no editor de voz (afinação/tempo/formantes) entra ANTES da cadeia do stem; o "Original" continua cru
+        const tuned = s.tuneBuf && s.p.tune && s.p.tune.on ? s.tuneBuf : null;
         const src = this.ctx.createBufferSource();
-        src.buffer = s.buffer;
-        src.connect(n.trim); if (n.raw) src.connect(n.raw);
+        src.buffer = tuned || s.buffer;
+        src.connect(n.trim); if (n.raw && !tuned) src.connect(n.raw);
         if (offset < s.buffer.duration) { src.start(when, offset); this.sources.push(src); }
+        if (tuned && n.raw && offset < s.buffer.duration) { const r = this.ctx.createBufferSource(); r.buffer = s.buffer; r.connect(n.raw); r.start(when, offset); this.sources.push(r); }
       });
     }
     stop() { (this.sources || []).forEach((s) => { try { s.stop(); } catch (e) { /* */ } }); this.sources = []; }
@@ -816,6 +819,7 @@
    */
   MM.render = async function (state, o) {
     o = o || {};
+    if (MM.tune && !o.premaster) await MM.tune.ensure(state); // voz editada pronta antes do render
     const sr = o.sr || state.sampleRate;
     const linEQ = state.master && state.master.chain && state.master.chain.eq && state.master.chain.eq.phase === 'linear' && state.master.chain.eq.on;
     const dur = (o.premaster ? o.premaster.duration : state.music.duration) + (o.tail === undefined ? 1.5 : o.tail) + (linEQ ? (sr > 50000 ? 16384 : 8192) / 2 / sr : 0) + 0.021; // + folga para o look-ahead do limiter (recortado no fim)

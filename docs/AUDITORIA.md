@@ -1,4 +1,4 @@
-# MIXMIND by Piradex — Auditoria de áudio (v1.1 → v1.6)
+# MIXMIND by Piradex — Auditoria de áudio (v1.1 → v1.7)
 
 Auditoria técnica da cadeia completa (mistura → mix bus → master → export), feita com medições objetivas no Chromium (o mesmo motor Web Audio que corre no browser), validadas com o `ebur128` do ffmpeg.
 
@@ -149,3 +149,26 @@ Novidades da v1.2: a IA reconhece mixes que já chegam masterizadas (aqui: −9,
 | Arquivo sintético com padrão (piano +4 dB face à regra, agudos +5 dB na voz) | balanço em sessões não vistas ±1,5 dB vs ±3,1 dB da regra; piano aprendido +3,9 dB; na demo o piano passa de −8,0 para −6,4 dB (peso 40 % com 4 sessões); voz de apoio inalterada (família sem exemplos = peso 0) |
 | Arquivo sem padrão (ruído) | peso do modelo ≈ 0 — não estraga as regras |
 | Portal → aprovação → biblioteca (Supabase falso com as regras RLS) | envio pendente; anon não lê; admin aprova → análise local → medidas publicadas → áudio apagado; um browser limpo recebe a biblioteca ao abrir a app; sem chaves, tudo local |
+
+## v1.7 — Editor de voz nota a nota (validação)
+
+Voz sintética com pitch e formantes conhecidos (vogal “a”: F1 700 Hz, F2 1220 Hz, F3 2600 Hz), notas a 5730, 6000 e 6400 cents (MIDI×100, esta com vibrato ±60 cents a 5,5 Hz) e uma sibilante. Testes em `tests/tune.test.mjs`.
+
+| Teste | Resultado |
+|---|---|
+| Deteção de pitch: WebAssembly vs JavaScript | diferença < 1 cent; mesma decisão vozeado/não vozeado (≤ 2 tramas) |
+| Centro das notas detetado | ±8 cents nas três notas; sibilante classificada como evento sem pitch; vibrato medido |
+| Tonalidade a partir de uma melodia | Lá menor reconhecido (perfis de Krumhansl) |
+| Sem edições | não há render (a voz original toca) |
+| Editar uma nota | fora da zona editada, saída **idêntica bit a bit** ao original (mono e estéreo) |
+| Subir 1 meio-tom · descer 3 meios-tons | medido +100 / −300 cents (±8) · nível ±1 / ±1,5 dB |
+| Pitch Centre 100 % numa nota a +30 cents | vai ao Lá exato (±6 cents) |
+| Formantes ao subir 4 meios-tons | harmónicos seguem o envelope original (erro 1,4 dB) e não o deslocado (7,4 dB): formantes preservados |
+| Ferramenta de formantes +300 cents (sem mudar a nota) | envelope deslocado ×1,19 (erro 2,0 dB vs 6,1 dB face ao original) |
+| Vibrato original a 0 % | desvio que sobra < 12 cents (tinha ±60) |
+| Mover uma nota +100 ms | ataque 100 ms depois (±12 ms); duração do ficheiro igual |
+| Ganho −6 dB · sibilantes −6 dB | −6,0 ±0,3 dB · −6 ±0,5 dB |
+| Harmonia 3ª acima em Lá menor | Lá → Dó, Dó → Mi (±10 cents) |
+| Qualidade do PSOLA (relação harmónicos/ruído, nota sustentada; original 54,5 dB) | −5 st 40,0 · −2 st 41,7 · −1 st 43,3 · +1 st 44,9 · +2 st 43,6 · +5 st 46,3 dB — artefactos ~40 dB abaixo dos harmónicos. A interpolação entre grãos vizinhos e as marcas sub-amostra valeram +3 a +6 dB |
+| Velocidade (Chromium, demo 2:24) | análise 2,0 s · render depois de editar uma nota 0,2–0,4 s (só a zona editada) |
+| Integração | a nota editada muda o render da pré-master (a voz entra antes do mixer); Ctrl+Z repõe a voz original; o monitor “Original” continua cru |
