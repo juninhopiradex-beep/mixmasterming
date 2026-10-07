@@ -1,4 +1,4 @@
-/* MixMind — sessão: estado do projeto, importação, pipeline de IA, undo/redo, versões e persistência local. */
+/* MIXMIND — sessão: estado do projeto, importação, pipeline de IA, undo/redo, versões e persistência local. */
 (function () {
   const MM = (window.MM = window.MM || {});
   const D = MM.dsp;
@@ -190,13 +190,13 @@
     const ref = state.refs.find((r) => r.id === state.activeRef);
     if (!opts.keepMaster) MM.runMaster(state, state.metrics.mix, ref ? ref.metrics : null);
     const res = await MM.masterize(state, state.premasterBuf, { onProgress: (p) => step('render', 0.5 + p * 0.5, 'master') });
-    state.masterBuf = res.buffer;
+    state.masterBuf = res.buffer; state.codecBuf = null;
     state.metrics.master = res.metrics;
     state.masterPeaks = MM.peaks(D.channelsOf(res.buffer), 900);
     state.mixPeaks = MM.peaks(D.channelsOf(state.premasterBuf), 900);
     state.masterGR = state.master.chain.glue.gr + Math.max(0, res.metrics.plr < 9 ? 2 : 1);
     state.score = MM.computeScore(state, Object.assign({ gr: state.masterGR }, res.metrics));
-    state.mixScore = state.mode === 'master' ? null : MM.computeScore(state, Object.assign({}, state.metrics.mix, { lufs: state.master.target, tp: -3 }));
+    state.mixScore = state.mode === 'master' ? null : MM.computeScore(state, Object.assign({}, state.metrics.mix, { lufs: state.master.target, tp: -3 }), { mix: true });
     state.qc = MM.exporter.qc(res.metrics, state);
     if (state.metrics.orig && state.mode !== 'master') state.scoreOrig = MM.computeScore(state, state.metrics.orig, { raw: true }).overall;
     engine.setLoudness({ orig: state.metrics.orig ? state.metrics.orig.lufs : -60, mix: state.metrics.mix.lufs, master: res.metrics.lufs, ref: ref ? ref.metrics.lufs : -60 });
@@ -204,6 +204,16 @@
     step('render', 1, 'pronto');
     state.stage = 'ready';
     if (!opts.noVersion) MM.saveVersion(state, opts.versionName);
+  };
+
+  /** Recalcula o score (ex.: depois de medir os stems processados ou treinar um estilo) e atualiza a versão atual. */
+  MM.rescore = function (state) {
+    if (!state.metrics || !state.metrics.master) return null;
+    state.score = MM.computeScore(state, Object.assign({ gr: state.masterGR }, state.metrics.master));
+    if (state.metrics.mix && state.mode !== 'master') state.mixScore = MM.computeScore(state, Object.assign({}, state.metrics.mix, { lufs: state.master.target, tp: -3 }), { mix: true });
+    const v = (state.versions || []).find((x) => x.id === state.currentVersion);
+    if (v) { v.score = state.score.overall; v.scores = Object.fromEntries(Object.entries(state.score).filter(([, x]) => typeof x === 'number')); }
+    return state.score;
   };
 
   // ---------- snapshots / undo / versões ----------
@@ -214,11 +224,13 @@
       direction: state.direction, aesthetics: state.aesthetics, fx: state.fx, bus: state.bus, master: state.master,
       automation: state.automation, rider: state.rider, refInfluence: state.refInfluence, refApply: state.refApply, activeRef: state.activeRef,
       explain: state.explain, masterExplain: state.masterExplain, conflicts: state.conflicts, confidence: state.confidence,
+      sections: state.music && state.music.sections ? state.music.sections : null,
     });
   };
   MM.restore = function (state, snap) {
     snap = structuredClone(snap);
     snap.stems.forEach((ss) => { const s = state.stems.find((x) => x.id === ss.id); if (s) Object.assign(s, ss); });
+    if (snap.sections && state.music) state.music.sections = snap.sections;
     ['direction', 'aesthetics', 'fx', 'bus', 'master', 'automation', 'rider', 'refInfluence', 'refApply', 'activeRef', 'explain', 'masterExplain', 'conflicts', 'confidence'].forEach((k) => { if (snap[k] !== undefined) state[k] = snap[k]; });
   };
   const hist = { undo: [], redo: [] };
@@ -238,6 +250,7 @@
     const v = {
       id: 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: name || (kindMix ? 'Mix V' : 'Master V') + n, kind: kindMix ? 'mix' : 'master',
       created: Date.now(), snap: MM.snapshot(state), lufs: state.metrics.master ? state.metrics.master.lufs : null, score: state.score ? state.score.overall : null,
+      scores: state.score ? Object.fromEntries(Object.entries(state.score).filter(([k, v]) => typeof v === 'number')) : null,
       masterBuf: state.masterBuf, premasterBuf: state.premasterBuf, metrics: structuredClone({ mix: state.metrics.mix, master: state.metrics.master }),
     };
     state.versions.push(v);
@@ -271,8 +284,13 @@
         stems: state.stems.map((s) => ({ id: s.id, name: s.name, features: s.features, raw: state.project.demo ? null : s.raw })),
         refs: state.refs.map((r) => ({ id: r.id, name: r.name, raw: r.raw, metrics: r.metrics })),
         premasterRaw: state.mode === 'master' ? state.premasterRaw : null,
+        // versões (decisões, métricas e scores; o áudio renderizado não é guardado — refaz-se ao abrir)
+        versions: MM.project ? MM.project.versionsLite(state) : [], currentVersion: state.currentVersion, currentVersionName: state.currentVersionName,
+        album: state.album || null, meta: state.meta || null,
       };
       await new Promise((res, rej) => { const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put(rec); tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+      if (MM.project) MM.project.markOpen(state);
+      state.savedAt = Date.now();
       return true;
     } catch (e) { console.warn('Não foi possível guardar o projeto', e); return false; }
   };

@@ -1,4 +1,4 @@
-# MixMind — Proposta técnica e arquitetura
+# MIXMIND — Proposta técnica e arquitetura
 
 > **AI proposes. Engineer decides.** Uma DAW inteligente / AI Mixing & Mastering Environment para engenheiros, produtores e artistas.
 
@@ -119,7 +119,7 @@ Até 3 faixas; métricas: LUFS, LRA, PLR, crest, largura, correlação, mono < 1
 
 ## 10. Desenho da interface
 
-Topo: projeto, versões, transporte A/B (Original · Mix · Master · Ref) com loudness match, alvo, estado, undo/redo, **AI Mix & Master**. Navegação por vistas: Importar · Mixer · Arranjo · Análise · Automação · Master · Comparar · Referências · Exportar · MixMind Master · Definições. Dock inferior: transporte, timeline com secções clicáveis (loop por secção), medidores LUFS-I/S/M, TP, correlação, GR. Paleta de comandos (Ctrl+K). Estética: escuro premium, vidro, acentos menta→ciano, números monoespaçados. **Estado:** ✅.
+Topo: projeto, versões, transporte A/B (Original · Mix · Master · Ref) com loudness match, alvo, estado, undo/redo, **AI Mix & Master**. Navegação por vistas: Importar · Mixer · Arranjo · Análise · Automação · Master · Comparar · Referências · Exportar · MIXMIND Master · Definições. Dock inferior: transporte, timeline com secções clicáveis (loop por secção), medidores LUFS-I/S/M, TP, correlação, GR. Paleta de comandos (Ctrl+K). Estética: escuro premium, vidro, acentos menta→ciano, números monoespaçados. **Estado:** ✅.
 
 ## 11. Estrutura de dados do projeto
 
@@ -190,9 +190,9 @@ Snapshots completos do estado (Mix V1, V2…), com buffers renderizados das vers
 ## 21. Arquitetura VST3 / AU / AAX / CLAP
 
 🔜 Port para **JUCE (C++)**:
-- `MixMindCore` (biblioteca C++ partilhada): os mesmos módulos DSP (compressor, limiter TP, EQ dinâmico, multibanda LR4, M/S, saturação, medidor BS.1770), com testes de paridade contra os renders da versão web.
-- **MixMind Master** (plugin de inserção no master) — primeiro produto: macros Punch/Warmth/Width/Loudness, análise de 10 s e aprendizagem com referência (UI já desenhada na vista “MixMind Master”).
-- **MixMind Bridge** (plugin por pista, envia áudio para a app standalone via memória partilhada) para o fluxo completo de stems dentro da DAW.
+- `MIXMINDCore` (biblioteca C++ partilhada): os mesmos módulos DSP (compressor, limiter TP, EQ dinâmico, multibanda LR4, M/S, saturação, medidor BS.1770), com testes de paridade contra os renders da versão web.
+- **MIXMIND Master** (plugin de inserção no master) — primeiro produto: macros Punch/Warmth/Width/Loudness, análise de 10 s e aprendizagem com referência (UI já desenhada na vista “MIXMIND Master”).
+- **MIXMIND Bridge** (plugin por pista, envia áudio para a app standalone via memória partilhada) para o fluxo completo de stems dentro da DAW.
 - Build remoto com GitHub Actions/Codemagic (macOS universal + Windows), assinatura e notarização; AAX via PACE.
 
 **Risco:** médio-alto. **Prioridade:** P2.
@@ -226,7 +226,7 @@ Features por stem guardadas (IndexedDB) → reabrir não re-analisa. Premaster r
 ## 26. Datasets necessários
 
 - Multitracks com mixes finais (MedleyDB, MUSDB18-HQ, Cambridge “Mixing Secrets”, Open Multitrack Testbed) — com atenção às licenças.
-- **Biblioteca de estilos MixMind**: submissões de clientes (stems + mix + master + níveis), **pendentes até aprovação** por um administrador antes de entrarem no treino.
+- **Biblioteca de estilos MIXMIND**: submissões de clientes (stems + mix + master + níveis), **pendentes até aprovação** por um administrador antes de entrarem no treino.
 - Referências comerciais **apenas para extração de métricas** (sem redistribuição).
 
 ## 27. Criação de ground truth de mixes
@@ -251,7 +251,7 @@ Estatísticas por estilo (balanço por papel, curva tonal, PLR, largura, profund
 |---|---|
 | **0 · MVP web (este repositório)** | pipeline completo no browser, decisores heurísticos explicáveis, export com QC, demo |
 | **1 · Beta web** | biblioteca de estilos com aprovação de admin, feedback de utilizadores, classificador neural (ONNX/WebGPU), espectrograma, presets do utilizador |
-| **2 · MixMind Master plugin** | JUCE VST3/AU (macOS/Windows), paridade DSP com a web, licenças offline |
+| **2 · MIXMIND Master plugin** | JUCE VST3/AU (macOS/Windows), paridade DSP com a web, licenças offline |
 | **3 · Modelos de decisão** | preditor de parâmetros treinado por estilo, rider neural, aprendizagem de preferências |
-| **4 · Integração DAW** | MixMind Bridge (envio/receção de stems: Pro Tools, Cubase/Nuendo, Logic, Studio One, Ableton, Reaper), AAX, CLAP |
+| **4 · Integração DAW** | MIXMIND Bridge (envio/receção de stems: Pro Tools, Cubase/Nuendo, Logic, Studio One, Ableton, Reaper), AAX, CLAP |
 | **5 · Comercial** | contas/planos, processamento em servidor privado opcional, colaboração e revisão com clientes |

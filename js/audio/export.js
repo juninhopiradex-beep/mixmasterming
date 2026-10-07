@@ -1,4 +1,4 @@
-/* MixMind — Export engine
+/* MIXMIND — Export engine
  * WAV (16 c/ dither TPDF, 24, 32 float), AIFF (16/24), FLAC (16/24, codificador próprio),
  * MP3 320 (lamejs via CDN), ZIP (store) e controlo de qualidade (QC) com relatório.
  */
@@ -168,7 +168,8 @@
   X.loadLame = function () {
     if (window.lamejs) return Promise.resolve();
     if (lamePromise) return lamePromise;
-    const urls = ['https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js', 'https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js', 'https://unpkg.com/lamejs@1.2.1/lame.min.js'];
+    // cópia local primeiro (funciona offline); CDN só como recurso
+    const urls = ['js/vendor/lame.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js', 'https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js', 'https://unpkg.com/lamejs@1.2.1/lame.min.js'];
     lamePromise = new Promise((resolve, reject) => {
       const tryOne = (i) => {
         if (i >= urls.length) { lamePromise = null; reject(new Error('Não foi possível carregar o codificador MP3 (sem ligação à internet?)')); return; }
@@ -233,6 +234,30 @@
     return out;
   };
 
+  /** Leitor de ZIP (store e deflate). Devolve [{ name, data: Uint8Array }]. */
+  X.unzip = async function (u8) {
+    const v = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), dec = new TextDecoder();
+    let e = -1;
+    for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) if (v.getUint32(i, true) === 0x06054b50) { e = i; break; }
+    if (e < 0) throw new Error('Ficheiro ZIP inválido');
+    const n = v.getUint16(e + 10, true);
+    let p = v.getUint32(e + 16, true);
+    const out = [];
+    for (let k = 0; k < n; k++) {
+      if (v.getUint32(p, true) !== 0x02014b50) throw new Error('ZIP corrompido (diretório central)');
+      const method = v.getUint16(p + 10, true), csize = v.getUint32(p + 20, true), nl = v.getUint16(p + 28, true), xl = v.getUint16(p + 30, true), cl = v.getUint16(p + 32, true), lo = v.getUint32(p + 42, true);
+      const name = dec.decode(u8.subarray(p + 46, p + 46 + nl));
+      const lnl = v.getUint16(lo + 26, true), lxl = v.getUint16(lo + 28, true);
+      const start = lo + 30 + lnl + lxl;
+      let data = u8.subarray(start, start + csize);
+      if (method === 8) data = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+      else if (method !== 0) throw new Error('Compressão ZIP não suportada: ' + method);
+      out.push({ name, data });
+      p += 46 + nl + xl + cl;
+    }
+    return out;
+  };
+
   X.download = function (data, name, type) {
     const blob = data instanceof Blob ? data : new Blob([data], { type: type || 'application/octet-stream' });
     const a = document.createElement('a');
@@ -241,12 +266,14 @@
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
   };
 
-  X.encode = async function (buf, fmt, bits) {
-    const chs = D.channelsOf(buf), sr = buf.sampleRate;
-    if (fmt === 'wav') return { data: X.wav(chs, sr, bits), ext: 'wav', type: 'audio/wav' };
-    if (fmt === 'aiff') return { data: X.aiff(chs, sr, bits), ext: 'aiff', type: 'audio/aiff' };
-    if (fmt === 'flac') return { data: X.flac(chs, sr, bits), ext: 'flac', type: 'audio/flac' };
-    if (fmt === 'mp3') return { data: await X.mp3(chs, sr, 320), ext: 'mp3', type: 'audio/mpeg' };
+  /** meta (opcional): título, artista, ISRC… escritos no ficheiro; loud: métricas EBU R128 para o bext do WAV. */
+  X.encode = async function (buf, fmt, bits, meta, loud) {
+    const chs = D.channelsOf(buf), sr = buf.sampleRate, Dl = MM.delivery;
+    const m = meta && Dl ? meta : null;
+    if (fmt === 'wav') return { data: m ? Dl.wavWithMeta(X.wav(chs, sr, bits), m, loud) : X.wav(chs, sr, bits), ext: 'wav', type: 'audio/wav' };
+    if (fmt === 'aiff') return { data: m ? Dl.aiffWithMeta(X.aiff(chs, sr, bits), m) : X.aiff(chs, sr, bits), ext: 'aiff', type: 'audio/aiff' };
+    if (fmt === 'flac') return { data: m ? Dl.flacWithMeta(X.flac(chs, sr, bits), m) : X.flac(chs, sr, bits), ext: 'flac', type: 'audio/flac' };
+    if (fmt === 'mp3') { const d = await X.mp3(chs, sr, 320); return { data: m ? Dl.mp3WithMeta(d, m) : d, ext: 'mp3', type: 'audio/mpeg' }; }
     throw new Error('Formato desconhecido');
   };
 
@@ -288,12 +315,12 @@
 .sub{color:#666}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}.k{border:1px solid #ddd;border-radius:10px;padding:10px}.k b{display:block;font:600 20px ui-monospace,Menlo,monospace}.k span{color:#666;font-size:12px}
 table{width:100%;border-collapse:collapse}td{padding:8px;border-bottom:1px solid #eee;vertical-align:top}td span{color:#666}.ok{color:#0a7d55;font-weight:700}.warn{color:#b26b00;font-weight:700}.fail{color:#c0262d;font-weight:700}
 footer{margin-top:40px;color:#888;font-size:12px}@media print{body{margin:0}}</style></head><body>
-<h1>${esc(state.project.name)}</h1><div class="sub">${esc(state.currentVersionName || 'Mix')} · Master ${esc(state.master.style)} · ${state.music.bpm} BPM · ${esc(state.music.key)} · ${esc(state.music.genre)}</div>
+<h1>${esc(state.project.name)}</h1><div class="sub">MIXMIND by Piradex · ${esc(state.currentVersionName || 'Mix')} · Master ${esc(state.master.style)} · ${state.music.bpm} BPM · ${esc(state.music.key)} · ${esc(state.music.genre)}</div>
 <div class="grid"><div class="k"><span>LUFS-I</span><b>${fmt(m.lufs)}</b></div><div class="k"><span>True peak</span><b>${fmt(m.tp)} dBTP</b></div><div class="k"><span>LRA</span><b>${fmt(m.lra)} LU</b></div><div class="k"><span>PLR</span><b>${fmt(m.plr)} dB</b></div>
 <div class="k"><span>Correlação</span><b>${fmt(m.corr, 2)}</b></div><div class="k"><span>Graves mono</span><b>${Math.round(m.monoLow)} %</b></div><div class="k"><span>Mix score</span><b>${sc.overall || '—'}</b></div><div class="k"><span>Duração</span><b>${D.fmtTime(m.duration).slice(0, 5)}</b></div></div>
 <h2>Controlo de qualidade — ${qc.filter((q) => q.status === 'ok').length} OK · ${qc.filter((q) => q.status !== 'ok').length} avisos</h2><table>${rows}</table>
 <h2>Stems</h2><table><tr><td><b>Stem</b></td><td><b>Papel</b></td><td><b>Confiança</b></td><td><b>Fader</b></td><td><b>Pan</b></td></tr>${stems}</table>
 <h2>Decisões da IA</h2><ul>${(state.explain || []).slice(0, 40).map((e) => `<li><b>${esc(e.stemName || e.module)}</b> — ${esc(e.text)}</li>`).join('')}${(state.masterExplain || []).map((e) => `<li><b>Master · ${esc(e.module)}</b> — ${esc(e.text)}</li>`).join('')}</ul>
-<footer>Gerado pelo MixMind em ${new Date().toLocaleString('pt-PT')} · AI proposes. Engineer decides. · Imprime para PDF com Ctrl/Cmd+P.</footer></body></html>`;
+<footer>Gerado pelo MIXMIND by Piradex em ${new Date().toLocaleString('pt-PT')} · AI proposes. Engineer decides. · Imprime para PDF com Ctrl/Cmd+P.</footer></body></html>`;
   };
 })();

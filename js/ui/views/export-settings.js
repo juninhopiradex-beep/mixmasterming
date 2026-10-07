@@ -1,4 +1,4 @@
-/* MixMind — vistas Exportar e Definições */
+/* MIXMIND — vistas Exportar e Definições */
 (function () {
   const MM = window.MM, D = MM.dsp, UI = MM.ui;
   const V = (MM.views = MM.views || {});
@@ -13,7 +13,7 @@
   ];
   const ITEMS = [
     ['master', 'Master final'], ['premaster', 'Mix sem master (premaster)'], ['stems', 'Stems processados'], ['instrumental', 'Instrumental'],
-    ['acapella', 'Acapella'], ['tv', 'TV Mix (sem voz principal)'], ['performance', 'Performance Mix (sem voz principal e adlibs)'], ['report', 'Relatório de QC (HTML/PDF)'], ['session', 'Sessão MixMind (JSON)'],
+    ['acapella', 'Acapella'], ['tv', 'TV Mix (sem voz principal)'], ['performance', 'Performance Mix (sem voz principal e adlibs)'], ['report', 'Relatório de QC (HTML/PDF)'], ['session', 'Sessão MIXMIND (JSON)'],
   ];
   function opts(app) {
     const st = app.state;
@@ -31,7 +31,7 @@
   }
   function fileBase(app) {
     const st = app.state, o = opts(app), f = FORMATS.find((x) => x.id === o.fmt);
-    const proj = st.project.name.replace(/\(demo\)/i, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('').slice(0, 40) || 'MixMind';
+    const proj = st.project.name.replace(/\(demo\)/i, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('').slice(0, 40) || 'MIXMIND';
     const ver = (st.currentVersionName || 'V1').replace(/^Mix /, '').replace(/[^\w]+/g, '');
     return o.name || `${proj}_Master_${ver}_${f.f === 'mp3' ? '320' : f.bits + 'b'}_${o.sr / 1000 === 44.1 ? '44k' : Math.round(o.sr / 1000) + 'k'}`;
   }
@@ -64,6 +64,7 @@
           </div>
           <div class="eyebrow" style="margin-top:24px">Nome dos ficheiros</div>
           <input class="field mono" id="fname" style="margin-top:10px;height:44px" value="${UI.esc(fileBase(app))}.${f.f === 'flac' ? 'flac' : f.f}">
+          ${V.export.metaForm(app)}
         </div>
         <div>
           <div class="eyebrow">Relatório de QC · pré-visualização</div>
@@ -76,19 +77,44 @@
           <div class="row" style="justify-content:space-between;margin-top:8px"><span class="muted">Tamanho estimado</span><span class="mono">${UI.bytes(total)}</span></div>
           <button class="btn primary lg" style="width:100%;margin-top:16px" id="doExport" ${app.ready() && nFiles ? '' : 'disabled'}>${UI.icon('download')}Exportar ${nFiles} ficheiro${nFiles === 1 ? '' : 's'}</button>
           <div id="expProg" style="margin-top:12px"></div>
+          <div class="panel p" style="margin-top:16px"><div class="row" style="justify-content:space-between;gap:12px"><div><b>Projeto completo (.mixmind)</b><div class="small muted">Cópia de segurança com o áudio original, todas as decisões, versões, secções e automação. Abre noutro computador ou browser.</div></div><button class="btn acc" id="expProj">${UI.icon('download')}Guardar</button></div></div>
           ${(st.exports || []).length ? `<div class="eyebrow" style="margin-top:28px">Exportações anteriores</div><div class="changes" style="margin-top:6px">${st.exports.slice().reverse().map((e) => `<div class="ln"><span>${UI.esc(e.name)}</span><span>${UI.esc(e.ver)} · ${UI.fmtNum(e.lufs)} LUFS</span></div>`).join('')}</div>` : ''}
         </div>
       </div>`;
     },
     mount(app, root) {
+      const ep = root.querySelector('#expProj'); if (ep) ep.onclick = () => app.exportProjectFile();
       const o = opts(app);
       root.querySelectorAll('[data-fmt]').forEach((b) => (b.onclick = () => { o.fmt = b.dataset.fmt; o.name = ''; if (o.fmt === 'mp3' && o.sr > 48000) o.sr = 48000; if (o.fmt === 'wav16' && !o.srTouched) o.sr = 44100; app.refresh(); }));
       root.querySelectorAll('[data-sr]').forEach((b) => (b.onclick = () => { o.sr = +b.dataset.sr; o.srTouched = true; o.name = ''; app.refresh(); }));
       root.querySelectorAll('[data-it]').forEach((c) => (c.onchange = () => { o.items[c.dataset.it] = c.checked; app.refresh(); }));
       root.querySelectorAll('[data-pl]').forEach((c) => (c.onchange = () => { o.plats[c.dataset.pl] = c.checked; app.refresh(); }));
+      root.querySelectorAll('[data-meta]').forEach((inp) => (inp.onchange = () => {
+        const k = inp.dataset.meta; let v = inp.value.trim();
+        if (k === 'isrc') v = MM.delivery.normISRC(v);
+        if (k === 'upc') v = v.replace(/\D/g, '');
+        app.state.meta = Object.assign(MM.delivery.defaults(app.state), app.state.meta, { [k]: v });
+        app.saveSoon();
+        if (k === 'isrc' || k === 'upc') setTimeout(() => app.refresh(), 0);
+      }));
       const fn = root.querySelector('#fname');
       fn.onchange = () => { o.name = fn.value.replace(/\.[a-z0-9]+$/i, ''); };
       root.querySelector('#doExport').onclick = () => V.export.run(app, root);
+    },
+    metaForm(app) {
+      const st = app.state, m = (st.meta = MM.delivery.defaults(st));
+      const fld = (k, label, ph, w) => `<label class="mf" style="${w ? 'grid-column:span ' + w : ''}"><span>${label}</span><input class="field" data-meta="${k}" value="${UI.esc(m[k] || '')}" placeholder="${UI.esc(ph || '')}"></label>`;
+      const isrcOk = !m.isrc || MM.delivery.validISRC(m.isrc), upcOk = !m.upc || MM.delivery.validEAN(m.upc);
+      return `<div class="eyebrow" style="margin-top:24px">Metadados · escritos nos ficheiros</div>
+        <div class="meta-grid" style="margin-top:10px">
+          ${fld('title', 'Título', st.project.name.replace(/\s*\(demo\)/i, ''), 2)}${fld('artist', 'Artista', 'Nome artístico', 2)}
+          ${fld('album', 'Álbum / EP', '')}${fld('year', 'Ano', '2026')}${fld('genre', 'Género', 'Kizomba')}${fld('label', 'Editora', '')}
+          ${fld('composer', 'Compositor', '')}${fld('producer', 'Produtor', '')}${fld('copyright', 'Copyright (℗)', '℗ 2026 …', 2)}
+          <label class="mf"><span>ISRC ${m.isrc ? (isrcOk ? '<b class="acc-t">✓</b>' : '<b class="bad-t">formato inválido</b>') : ''}</span><input class="field mono" data-meta="isrc" value="${UI.esc(m.isrc ? MM.delivery.fmtISRC(m.isrc) : '')}" placeholder="AO-XXX-26-00001"></label>
+          <label class="mf"><span>UPC/EAN ${m.upc ? (upcOk ? '<b class="acc-t">✓</b>' : '<b class="bad-t">dígito de controlo errado</b>') : ''}</span><input class="field mono" data-meta="upc" value="${UI.esc(m.upc || '')}" placeholder="13 dígitos"></label>
+          ${fld('comment', 'Comentário', '', 2)}
+        </div>
+        <div class="small dim" style="margin-top:8px">WAV: BWF (com loudness R128), INFO, aXML com ISRC e ID3 · FLAC: Vorbis comments · MP3: ID3v2.3 · AIFF: ID3. O ISRC também entra no CD/DDP do modo Álbum.</div>`;
     },
     async run(app, root) {
       const st = app.state, o = opts(app), f = FORMATS.find((x) => x.id === o.fmt);
@@ -122,9 +148,16 @@
             master = res.buffer; masterMet = res.metrics;
           }
         }
-        const enc = async (buf, name, bitsOverride) => { const e = await MM.exporter.encode(buf, f.f, bitsOverride || f.bits); files.push({ name: name + '.' + e.ext, data: e.data, type: e.type }); };
+        const meta = MM.delivery.defaults(st);
+        if (!meta.title) meta.title = st.project.name.replace(/\s*\(demo\)/i, '');
+        if (meta.isrc && !MM.delivery.validISRC(meta.isrc)) throw new Error('O ISRC não é válido (formato CC-XXX-AA-NNNNN). Corrige-o nos metadados ou apaga-o.');
+        const enc = async (buf, name, bitsOverride, sub) => {
+          const mm = Object.assign({}, meta, sub ? { title: meta.title + ' (' + sub + ')', isrc: '' } : {});
+          const e = await MM.exporter.encode(buf, f.f, bitsOverride || f.bits, mm, masterMet);
+          files.push({ name: name + '.' + e.ext, data: e.data, type: e.type });
+        };
         if (o.items.master) { say('A codificar o master…', 0.55); await enc(master, base); }
-        if (o.items.premaster) { say('A codificar o premaster…', 0.58); await enc(premaster, base.replace('_Master_', '_Premaster_')); }
+        if (o.items.premaster) { say('A codificar o premaster…', 0.58); await enc(premaster, base.replace('_Master_', '_Premaster_'), null, 'Premaster'); }
         const variants = [['instrumental', 'Instrumental', (s) => s.group !== 'vocals'], ['acapella', 'Acapella', (s) => s.group === 'vocals'], ['tv', 'TVMix', (s) => s.role !== 'Lead Vocal'], ['performance', 'PerformanceMix', (s) => s.role !== 'Lead Vocal' && s.role !== 'Adlibs']];
         let vi = 0;
         for (const [k, nm, filt] of variants) {
@@ -132,14 +165,14 @@
           if (!o.items[k] || st.mode === 'master') continue;
           say(`A renderizar ${nm}…`, 0.6 + vi * 0.04);
           const b = await MM.render(st, { out: 'master', sr, filter: filt });
-          await enc(b, base.replace('_Master_', '_' + nm + '_'));
+          await enc(b, base.replace('_Master_', '_' + nm + '_'), null, nm);
         }
         if (o.items.stems && st.mode !== 'master') {
           const ss = st.stems.filter((s) => !s.removed);
           for (let i = 0; i < ss.length; i++) {
             say(`A renderizar stems processados (${i + 1}/${ss.length})…`, 0.76 + (i / ss.length) * 0.12);
             const b = await MM.render(st, { out: 'premaster', sr, filter: (s) => s.id === ss[i].id });
-            await enc(b, 'Stems/' + String(i + 1).padStart(2, '0') + '_' + ss[i].label.replace(/[^\w]+/g, ''));
+            await enc(b, 'Stems/' + String(i + 1).padStart(2, '0') + '_' + ss[i].label.replace(/[^\w]+/g, ''), null, 'Stem ' + ss[i].label);
           }
         }
         const plats = MM.PLATFORMS.filter((p) => o.plats[p.id]);
@@ -154,7 +187,7 @@
         if (o.items.session) {
           const snap = MM.snapshot(st);
           snap.stems.forEach((s) => delete s.header);
-          files.push({ name: base.replace('_Master_', '_Sessao_') + '.mixmind.json', data: JSON.stringify({ app: 'MixMind', v: 1, project: st.project, music: Object.assign({}, st.music, { energyPerBar: undefined, vocalPerBar: undefined }), snapshot: snap }, (k, v) => (v instanceof Float32Array ? Array.from(v, (x) => +x.toFixed(3)) : v), 1), type: 'application/json' });
+          files.push({ name: base.replace('_Master_', '_Sessao_') + '.mixmind.json', data: JSON.stringify({ app: 'MIXMIND by Piradex', v: 1, project: st.project, music: Object.assign({}, st.music, { energyPerBar: undefined, vocalPerBar: undefined }), snapshot: snap }, (k, v) => (v instanceof Float32Array ? Array.from(v, (x) => +x.toFixed(3)) : v), 1), type: 'application/json' });
         }
         say('A empacotar…', 0.98);
         if (files.length === 1) MM.exporter.download(files[0].data, files[0].name, files[0].type);
@@ -183,12 +216,14 @@
         <div class="setrow"><div><b>Qualidade da análise</b><small>Mais qualidade demora mais, sobretudo em sessões com muitos stems.</small></div>${seg('quality', [['fast', 'Rápida'], ['balanced', 'Equilibrada'], ['max', 'Máxima']], s.quality)}</div>
         <div class="setrow"><div><b>Usar GPU</b><small>${gpu ? 'WebGPU disponível neste browser — reservado para os modelos de classificação neural.' : 'WebGPU não disponível neste browser; a análise DSP corre no CPU.'}</small></div>${seg('gpu', [['auto', 'Automático'], ['off', 'Desligado']], s.gpu)}</div>
         <div class="setrow"><div><b>Guarda contra over-processing</b><small>Limita quanto a IA pode mexer num stem sem a tua confirmação (EQ máx., nº de bandas, GR, saturação).</small></div>${seg('guard', [['conservative', 'Conservador'], ['normal', 'Normal'], ['free', 'Livre']], s.guard)}</div>
+        <div class="setrow"><div><b>WebAssembly</b><small>${MM.wasm && MM.wasm.ready ? 'Ativo: FFT (análise e medição) e true peak correm em código nativo do browser — cerca de 3× mais rápidos.' : 'Indisponível neste browser — a usar JavaScript (mesmos resultados, mais lento).'}</small></div><span class="mono">${MM.wasm && MM.wasm.ready ? 'ativo' : '—'}</span></div>
+        <div class="setrow"><div><b>Cache por stem</b><small>Stems inalterados não voltam a ser processados nos renders e nas medições (só o que mudou). ${MM.stemCache ? `${MM.stemCache.entries.size} stems em cache · ${Math.round(MM.stemCache.bytes() / 1048576)} MB de ${Math.round(MM.stemCache.budget() / 1048576)} MB` : ''}</small></div><div class="row" style="gap:8px"><button class="btn sm ghost" id="cacheClr">Limpar</button>${seg('stemCache', [['on', 'Ligada'], ['off', 'Desligada']], s.stemCache || 'on')}</div></div>
         <div class="setrow"><div><b>Limites atuais</b><small class="mono">EQ ±${MM.GUARD[s.guard].eq} dB · ${MM.GUARD[s.guard].bands} bandas · GR ≤ ${MM.GUARD[s.guard].gr} dB · saturação ≤ ${Math.round(MM.GUARD[s.guard].sat * 100)} %</small></div><span></span></div>`;
       if (sec === 'audio') body = `<h2>Áudio</h2><p class="muted">Motor Web Audio com processamento interno em 32-bit float.</p>
         <div class="setrow"><div><b>Sample rate do projeto</b><small>Definida pela placa de som; o export pode usar 44,1 / 48 / 88,2 / 96 kHz.</small></div><span class="mono">${app.engine.ctx ? (app.engine.ctx.sampleRate / 1000).toString().replace('.', ',') + ' kHz' : '—'}</span></div>
         <div class="setrow"><div><b>Latência de saída</b><small>Latência do browser + look-ahead do limiter (4 ms).</small></div><span class="mono">${app.engine.ctx ? Math.round(((app.engine.ctx.baseLatency || 0) + (app.engine.ctx.outputLatency || 0)) * 1000) + ' ms' : '—'}</span></div>
         <div class="setrow"><div><b>Saída de áudio</b><small>${typeof AudioContext !== 'undefined' && AudioContext.prototype.setSinkId ? 'Escolhe a interface de áudio.' : 'O teu browser não permite escolher a saída (usa a do sistema).'}</small></div>${typeof AudioContext !== 'undefined' && AudioContext.prototype.setSinkId ? '<select class="field" id="sink" style="width:260px"><option value="">Saída do sistema</option></select>' : '<span></span>'}</div>`;
-      if (sec === 'privacy') body = `<h2>Privacidade</h2><p class="muted">O MixMind corre inteiramente no browser. Nenhum áudio é enviado para servidores.</p>
+      if (sec === 'privacy') body = `<h2>Privacidade</h2><p class="muted">O MIXMIND corre inteiramente no browser. Nenhum áudio é enviado para servidores.</p>
         <div class="setrow"><div><b>Projetos guardados neste computador</b><small>Guardados em IndexedDB (stems originais + decisões). Ficam só neste browser.</small></div><span class="mono">${app.recent.length}</span></div>
         <div id="projList">${app.recent.map((r) => `<div class="setrow"><div><b>${UI.esc(r.name)}</b><small>${new Date(r.updated).toLocaleString('pt-PT')} · ${r.mode === 'master' ? 'master' : r.n + ' stems'}</small></div><button class="btn sm ghost" data-delp="${r.id}">${UI.icon('trash')}Apagar</button></div>`).join('')}</div>`;
       if (sec === 'keys') body = `<h2>Idioma e atalhos</h2><p class="muted">Interface em Português (Portugal).</p><div class="kbdlist" style="margin-top:18px">${[['Play / pausa', 'Espaço'], ['Ouvir Original / Mix / Master / Ref', '1 · 2 · 3 · 4'], ['Loudness match', 'L'], ['Desfazer / Refazer', 'Ctrl+Z · Ctrl+Shift+Z'], ['Guardar versão', 'Ctrl+S'], ['Paleta de comandos', 'Ctrl+K'], ['Avançar / recuar 5 s (1 s com Shift)', '→ · ←'], ['Início', 'Home'], ['Mute / Solo do stem selecionado', 'M · S'], ['Fader / pan: fino', 'Shift + arrastar'], ['Fader / pan: valor da IA', 'Duplo clique']].map(([a, b]) => `<span>${a}</span><span class="kbd">${b}</span>`).join('')}</div>`;
@@ -196,7 +231,8 @@
     },
     mount(app, root) {
       root.querySelectorAll('[data-sec]').forEach((a) => (a.onclick = () => { app.setSec = a.dataset.sec; app.refresh(); }));
-      root.querySelectorAll('[data-set]').forEach((b) => (b.onclick = () => { app.state.settings[b.dataset.set] = b.dataset.v; app.saveSoon(); app.refresh(); if (b.dataset.set === 'guard' && app.ready()) UI.toast('Novo limite aplicado na próxima execução do AI Mix & Master.', 'ok'); }));
+      const clr = root.querySelector('#cacheClr'); if (clr) clr.onclick = () => { MM.stemCache.clear(); app.refresh(); UI.toast('Cache por stem limpa.', 'ok'); };
+      root.querySelectorAll('[data-set]').forEach((b) => (b.onclick = () => { app.state.settings[b.dataset.set] = b.dataset.v; if (b.dataset.set === 'stemCache') { MM.STEM_CACHE_OFF = b.dataset.v === 'off'; if (MM.STEM_CACHE_OFF) MM.stemCache.clear(); } app.saveSoon(); app.refresh(); if (b.dataset.set === 'guard' && app.ready()) UI.toast('Novo limite aplicado na próxima execução do AI Mix & Master.', 'ok'); }));
       root.querySelectorAll('[data-delp]').forEach((b) => (b.onclick = async () => { if (await UI.confirm('Apagar projeto', 'Os stems e as decisões guardadas neste browser serão apagados.', 'Apagar')) { await MM.deleteProject(b.dataset.delp); app.recent = await MM.listProjects(); app.refresh(); } }));
       const sink = root.querySelector('#sink');
       if (sink && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {

@@ -1,4 +1,4 @@
-/* MixMind — vista "MixMind Master" (interface tipo plugin para o master) */
+/* MIXMIND — vista "MIXMIND Master" (interface tipo plugin para o master) */
 (function () {
   const MM = window.MM, D = MM.dsp, UI = MM.ui;
   const V = (MM.views = MM.views || {});
@@ -15,13 +15,14 @@
     render(app) {
       const st = app.state;
       if (!app.hasSession()) {
-        return `<div class="hero" style="max-width:900px"><div class="eyebrow acc">MixMind Master</div><h1 style="margin-top:10px">Masteriza uma mix stereo.</h1><p class="lead">Carrega uma mix já feita. A IA analisa tonalidade, dinâmica e estéreo, escolhe a cadeia e acerta o alvo de loudness com true peak seguro. Tu ajustas com quatro macros.</p>
+        return `<div class="hero" style="max-width:900px"><div class="eyebrow acc">MIXMIND Master</div><h1 style="margin-top:10px">Masteriza uma mix stereo.</h1><p class="lead">Carrega uma mix já feita. A IA analisa tonalidade, dinâmica e estéreo, escolhe a cadeia e acerta o alvo de loudness com true peak seguro. Tu ajustas com quatro macros.</p>
           <div class="drop" id="mdrop"><div class="up">${UI.icon('upload')}</div><h2>Arrasta a tua mix</h2><p class="muted" style="margin:8px 0 18px">WAV, AIFF, FLAC ou MP3 — de preferência 24-bit, com 3–6 dB de headroom.</p><button class="btn primary lg" id="mpick">${UI.icon('file')}Escolher ficheiro</button></div></div>`;
       }
       const M = st.master, m = st.metrics.master;
       const busy = app.busy;
       return `<div class="plug">
-        <div class="hd">${UI.logo()}<b style="font-size:19px">MixMind Master</b>
+        <div class="hd">${UI.logo()}<b style="font-size:19px">MIXMIND Master</b>
+          ${st.music ? `<select class="field" id="pGenre" style="width:170px;height:34px" title="Estilo musical: perfil aprendido na aba Estilos">${Array.from(new Set([].concat(MM.styles && MM.styles.list ? MM.styles.list.map((x) => x.name) : [], Object.keys(MM.GENRES)))).map((g) => `<option ${g === st.music.genre ? 'selected' : ''} value="${UI.esc(g)}">${UI.esc(g)}${MM.styles && MM.styles.profile(g) ? ' · treinado (' + MM.styles.profile(g).n + ')' : ''}</option>`).join('')}</select>` : ''}
           <select class="field" id="pStyle" style="width:170px;height:34px">${Object.keys(MM.MASTER_STYLES).map((s) => `<option ${s === M.style ? 'selected' : ''}>${s}</option>`).join('')}</select>
           <span class="spacer"></span><span class="muted small">Latência ${M.chain.lim.lookahead} ms · look-ahead</span>
           <button class="btn ${busy ? 'busy' : app.ready() && !st.dirty.master ? 'primary' : 'acc'}" id="pState">${busy ? 'A processar' : app.ready() && !st.dirty.master ? 'Processado' : 'Por processar'}</button>
@@ -56,6 +57,8 @@
       const st = app.state, M = st.master;
       const restyle = (s) => { app.change('Estilo ' + s, () => { M.style = s; M.manual = {}; const t = MM.MASTER_STYLES[s].target; if (t) M.target = t; }, { master: true }); app.runAI({ keepMix: true }); };
       root.querySelector('#pStyle').onchange = (e) => restyle(e.target.value);
+      const pg = root.querySelector('#pGenre');
+      if (pg) pg.onchange = () => { const g = pg.value; app.change('Estilo musical ' + g, () => { st.music.genre = g; st.music.genreSource = 'manual'; delete M.manual.target; const G = MM.GENRES[g]; if (G) M.target = G.target; }, { master: true }); app.runAI({ keepMix: true }); };
       root.querySelectorAll('[data-ps]').forEach((b) => (b.onclick = () => restyle(b.dataset.ps)));
       root.querySelector('#pAn').onclick = () => { app.change('Analisar e ajustar', () => { M.manual = {}; }, { master: true }); app.runAI({ keepMix: true }); };
       root.querySelector('#pState').onclick = () => { if (st.dirty.master || !app.ready()) app.runAI({ keepMix: true }); };

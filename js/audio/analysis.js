@@ -1,4 +1,4 @@
-/* MixMind — Music Intelligence Engine
+/* MIXMIND — Music Intelligence Engine
  * Extração de features por stem, classificação (nome + áudio), deteção de problemas de importação,
  * BPM, tonalidade, compasso, estrutura/secções e sugestão de género.
  */

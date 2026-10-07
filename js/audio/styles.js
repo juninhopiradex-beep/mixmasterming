@@ -1,4 +1,4 @@
-/* MixMind — biblioteca e treino de estilos
+/* MIXMIND — biblioteca e treino de estilos
  *
  * Fluxo: carregar músicas (masters finais) ou stems pós-fader por estilo → ficam PENDENTES (só o ficheiro é guardado) →
  * ao APROVAR: análise → características guardadas, áudio apagado → perfil do estilo recalculado → classificador re-treinado.
@@ -120,7 +120,7 @@
     const st = S.byId(styleId);
     await ensureStored(st);
     const t = { id: 't' + S.uid(), styleId, kind: 'master', name: state.project.name + ' · ' + (state.currentVersionName || 'master'), files: [], size: 0, status: 'approved', added: Date.now(), source: 'session' };
-    t.features = await S.masterFeatures(state.masterBuf);
+    t.features = await S.masterFeatures(state.masterBuf, null, { bpm: state.music && state.music.bpm, sections: state.music && state.music.sections });
     if (state.mode !== 'master') t.balance = S.sessionBalance(state);
     S.tracks.push(t); await put('tracks', t);
     S.recompute();
@@ -193,6 +193,8 @@
     let bpm = opt.bpm || 0;
     if (!bpm) try { const mu = await MM.analyzeMusic([{ role: 'Drum Loop', chs: [mono], features: sf, length: mono.length }], sr); bpm = mu.bpm; } catch (e) { /* */ }
     // macro-dinâmica: desvio do short-term loudness nas partes ativas
+    let sections = null;
+    if (!opt.noSections) try { sections = opt.sections ? S.sectionDynamicsNamed(opt.sections, sr, chs, null) : S.sectionDynamicsMaster(chs, sr, bpm); } catch (e) { console.warn(e); }
     const stl = m.short.filter((v) => v > m.lufs - 20);
     const mean = D.mean(stl), macro = stl.length ? Math.sqrt(D.mean(stl.map((v) => (v - mean) ** 2))) : 0;
     if (onProgress) onProgress(1);
@@ -200,8 +202,88 @@
       v: 1, lufs: +m.lufs.toFixed(2), lra: +m.lra.toFixed(2), plr: +m.plr.toFixed(2), crest: +m.crest.toFixed(2), tp: +m.tp.toFixed(2),
       width: +m.width.toFixed(3), wLow: +wLow.toFixed(3), wMid: +wMid.toFixed(3), wHigh: +wHigh.toFixed(3), corr: +m.corr.toFixed(3), monoLow: +m.monoLow.toFixed(1),
       bands7: m.bands7.map((v) => +v.toFixed(2)), curve31, punch: +punch.toFixed(2), bpm, onsetRate: +sf.onsetRate.toFixed(2), centroid: Math.round(sf.centroid), macro: +macro.toFixed(2),
-      duration: +(chs[0].length / sr).toFixed(1),
+      duration: +(chs[0].length / sr).toFixed(1), sections,
     };
+  };
+
+  // ---------- dinâmica das secções (como o refrão abre face ao verso) ----------
+  const luOf = (blockMs, a, b) => { const i0 = Math.max(0, Math.floor(a * 10)), i1 = Math.min(blockMs.length, Math.ceil(b * 10)); let s2 = 0, n = 0; for (let i = i0; i < i1; i++) { s2 += blockMs[i]; n++; } return n ? -0.691 + 10 * Math.log10(s2 / n + 1e-20) : -99; };
+  /** Grupo da secção pelo nome: refrão (chorus), verso (verse) ou partes baixas (low). */
+  S.groupOf = (name) => (/Refr|Drop|Hook|Chorus/i.test(name || '') ? 'chorus' : /Intro|Outro|Bridge|Break|Instrumental/i.test(name || '') ? 'low' : 'verse');
+  /** Métricas da mix por grupo de secções: loudness, largura e brilho (agudos > 5 kHz face a 300 Hz–3 kHz). */
+  function mixByGroup(chs, sr, ranges) {
+    const L = chs[0], R = chs[1] || chs[0];
+    const loud = D.loudness([L, R], sr).blockMs;
+    const mono = D.mono([L, R]);
+    const bq = (t, f) => D.biquad(t, f, 0.7071, 0, sr);
+    const hf = D.filter(D.filter(mono, bq('highpass', 5000)), bq('highpass', 5000));
+    const md = D.filter(D.filter(D.filter(mono, bq('highpass', 300)), bq('lowpass', 3000)), bq('lowpass', 3000));
+    const out = {};
+    Object.entries(ranges).forEach(([g, rs]) => {
+      if (!rs.length) return;
+      let bp = 0, bn = 0, mm = 0, ss = 0, eh = 0, em = 0;
+      rs.forEach(([a, b]) => {
+        const i0 = Math.max(0, Math.floor(a * sr)), i1 = Math.min(L.length, Math.floor(b * sr));
+        for (let i = i0; i < i1; i += 4) { const m = L[i] + R[i], d = L[i] - R[i]; mm += m * m; ss += d * d; eh += hf[i] * hf[i]; em += md[i] * md[i]; }
+        const i2 = Math.floor(a * 10), i3 = Math.min(loud.length, Math.ceil(b * 10)); for (let i = i2; i < i3; i++) { bp += loud[i]; bn++; }
+      });
+      if (!bn || mm < 1e-9) return;
+      out[g] = { lu: -0.691 + 10 * Math.log10(bp / bn + 1e-20), width: Math.sqrt(ss / mm), bright: 10 * Math.log10((eh + 1e-12) / (em + 1e-12)), sec: rs.reduce((a, [x, y]) => a + y - x, 0) };
+    });
+    return out;
+  }
+  const deltas = (G) => {
+    if (!G.verse || !G.chorus) return null;
+    const d = (g) => (G[g] ? { lu: +(G[g].lu - G.verse.lu).toFixed(2), width: G.verse.width > 0.03 && G[g].width > 0.005 ? +(G[g].width / G.verse.width).toFixed(3) : null, bright: +(G[g].bright - G.verse.bright).toFixed(2) } : null);
+    return { chorus: d('chorus'), low: d('low') };
+  };
+  /** Sem nomes de secção (um master): frases de 4 compassos ordenadas por energia → refrão / verso / partes baixas. */
+  S.sectionDynamicsMaster = function (chs, sr, bpm) {
+    const L = chs[0], R = chs[1] || chs[0];
+    const loud = D.loudness([L, R], sr).blockMs;
+    const dur = L.length / sr, ph = bpm ? (4 * 4 * 60) / bpm : 8;
+    if (dur < ph * 6) return null;
+    const P = [];
+    for (let t = 0; t + ph <= dur; t += ph) P.push({ a: t, b: t + ph, lu: luOf(loud, t, t + ph) });
+    const mx = Math.max(...P.map((p) => p.lu));
+    const act = P.filter((p) => p.lu > mx - 18).map((p) => p.lu).sort((x, y) => x - y);
+    if (act.length < 6) return null;
+    const q = (f) => act[Math.min(act.length - 1, Math.floor(f * act.length))];
+    const hi = q(0.7), v0 = q(0.25), v1 = q(0.6);
+    const ranges = { chorus: [], verse: [], low: [] };
+    P.forEach((p) => { if (p.lu >= hi) ranges.chorus.push([p.a, p.b]); else if (p.lu >= v0 && p.lu <= v1) ranges.verse.push([p.a, p.b]); else if (p.lu < v0 && p.lu > mx - 30) ranges.low.push([p.a, p.b]); });
+    if (ranges.chorus.length < 2 || ranges.verse.length < 2) return null;
+    const d = deltas(mixByGroup([L, R], sr, ranges));
+    return d ? Object.assign({ src: 'master' }, d) : null;
+  };
+  /** Com secções nomeadas (stems ou sessão): mix + cada papel + voz face ao instrumental. */
+  S.sectionDynamicsNamed = function (sections, sr, mixChs, stems) {
+    const ranges = { chorus: [], verse: [], low: [] };
+    (sections || []).forEach((s) => ranges[S.groupOf(s.name)].push([s.start, s.end]));
+    if (!ranges.chorus.length || !ranges.verse.length) return null;
+    const d = deltas(mixByGroup(mixChs, sr, ranges));
+    if (!d) return null;
+    const out = Object.assign({ src: 'named' }, d);
+    if (stems && stems.length) {
+      const luG = (bm, g) => { let s2 = 0, n = 0; ranges[g].forEach(([a, b]) => { const i0 = Math.floor(a * 10), i1 = Math.min(bm.length, Math.ceil(b * 10)); for (let i = i0; i < i1; i++) { s2 += bm[i]; n++; } }); return n ? -0.691 + 10 * Math.log10(s2 / n + 1e-20) : -99; };
+      const roles = {}, rolesLow = {};
+      stems.forEach((st) => {
+        if (st.role === 'Lead Vocal' || !st.blockMs) return;
+        const v = luG(st.blockMs, 'verse'), c = luG(st.blockMs, 'chorus'), l = ranges.low.length ? luG(st.blockMs, 'low') : -99;
+        if (v > -50 && c > -50) (roles[st.role] = roles[st.role] || []).push(c - v);
+        if (v > -50 && l > -50) (rolesLow[st.role] = rolesLow[st.role] || []).push(l - v);
+      });
+      out.roles = Object.fromEntries(Object.entries(roles).map(([r, a]) => [r, +D.median(a).toFixed(2)]));
+      out.rolesLow = Object.fromEntries(Object.entries(rolesLow).map(([r, a]) => [r, +D.median(a).toFixed(2)]));
+      const lead = stems.filter((x) => x.role === 'Lead Vocal').sort((a, b) => (b.lufs || -99) - (a.lufs || -99))[0];
+      if (lead && lead.blockMs) {
+        const n = lead.blockMs.length, inst = new Float64Array(n);
+        stems.forEach((x) => { if (x === lead || !x.blockMs || /Vocal|Adlib|Choir/.test(x.role)) return; for (let i = 0; i < n && i < x.blockMs.length; i++) inst[i] += x.blockMs[i]; });
+        const vv = luG(lead.blockMs, 'verse') - luG(inst, 'verse'), vc = luG(lead.blockMs, 'chorus') - luG(inst, 'chorus');
+        if (luG(lead.blockMs, 'verse') > -50 && luG(lead.blockMs, 'chorus') > -50) out.vocal = +(vc - vv).toFixed(2);
+      }
+    }
+    return out;
   };
 
   /** Balanço por papel a partir de stems pós-fader (bounce da mistura final): LU relativos à voz principal. */
@@ -214,7 +296,7 @@
       const chs = []; for (let c = 0; c < Math.min(2, buf.numberOfChannels); c++) chs.push(buf.getChannelData(c));
       const feat = await MM.analyzeStem(chs, sr, 'fast');
       const cl = MM.classify(f.name, feat);
-      stems.push({ name: f.name, role: cl.role, lufs: feat.lufs, silence: feat.silence, chs, centroid: feat.centroid });
+      stems.push({ name: f.name, role: cl.role, lufs: feat.lufs, silence: feat.silence, chs, centroid: feat.centroid, features: feat, length: chs[0].length, blockMs: feat.blockMs });
       if (onProgress) onProgress(((i + 1) / files.length) * 0.8);
     }
     if (!stems.length) throw new Error('Nenhum stem de áudio na pasta');
@@ -234,8 +316,14 @@
     const L = new Float32Array(len), R = new Float32Array(len);
     stems.forEach((s) => { const a = s.chs[0], b = s.chs[1] || s.chs[0], k = s.chs.length === 1 ? 0.7071 : 1; for (let i = 0; i < a.length; i++) { L[i] += a[i] * k; R[i] += b[i] * k; } });
     const mixBuf = MM.toAudioBuffer([L, R], sr);
-    out._mixFeatures = await S.masterFeatures(mixBuf, (p) => onProgress && onProgress(0.8 + p * 0.2));
+    out._mixFeatures = await S.masterFeatures(mixBuf, (p) => onProgress && onProgress(0.8 + p * 0.2), { noSections: true });
     out._mixFeatures.fromStems = true;
+    // estrutura (verso/refrão) a partir dos stems → como cada instrumento e a voz mudam entre secções
+    try {
+      const mu = await MM.analyzeMusic(stems.filter((x) => x.role !== 'Reference Track'), sr);
+      const sd = S.sectionDynamicsNamed(mu.sections, sr, [L, R], stems);
+      if (sd) out._mixFeatures.sections = sd;
+    } catch (e) { console.warn('dinâmica das secções', e); }
     return out;
   };
 
@@ -280,6 +368,15 @@
         p.balance = {};
         Object.entries(roles).forEach(([r, a]) => (p.balance[r] = { med: +D.median(a).toFixed(2), n: a.length, spread: a.length > 1 ? +(D.percentile(a, 0.75) - D.percentile(a, 0.25)).toFixed(1) : null }));
       }
+      // dinâmica das secções aprendida (medianas): refrão e partes baixas face ao verso
+      const sd = all.map((t) => t.features.sections).filter(Boolean);
+      if (sd.length) {
+        const med = (arr) => (arr.length ? +D.median(arr).toFixed(2) : null);
+        const grp = (g) => { const a = sd.map((x) => x[g]).filter(Boolean); return a.length ? { lu: med(a.map((x) => x.lu)), width: med(a.map((x) => x.width).filter((v) => v !== null && isFinite(v))), bright: med(a.map((x) => x.bright)), n: a.length } : null; };
+        const rolesOf = (k) => { const r = {}; sd.forEach((x) => Object.entries(x[k] || {}).forEach(([role, v]) => (r[role] = r[role] || []).push(v))); return Object.fromEntries(Object.entries(r).map(([role, a]) => [role, { med: med(a), n: a.length }])); };
+        const voc = sd.map((x) => x.vocal).filter((v) => isFinite(v));
+        p.sections = { n: sd.length, nNamed: sd.filter((x) => x.src === 'named').length, chorus: grp('chorus'), low: grp('low'), roles: rolesOf('roles'), rolesLow: rolesOf('rolesLow'), vocal: voc.length ? { med: med(voc), n: voc.length } : null };
+      }
       p.conf = 1 - Math.exp(-p.n / 4); // 4 músicas ≈ 63 %, 10 ≈ 92 %
       p.balConf = 1 - Math.exp(-p.nStems / 2);
       S.profiles[st.name] = p;
@@ -287,6 +384,8 @@
     S.train();
   };
   S.profile = (name) => S.profiles[name] || null;
+  /** Dinâmica das secções aprendida para um estilo (null se ainda não houver exemplos com estrutura). */
+  S.sectionProfile = (name) => { const p = S.profiles[name]; return p && p.sections && p.sections.n ? Object.assign({ conf: 1 - Math.exp(-p.sections.n / 3) }, p.sections) : null; };
   S.THIRD = THIRD;
 
   // ---------- classificador (gaussiano diagonal sobre características normalizadas) ----------
@@ -387,13 +486,13 @@
   S.exportLibrary = function (onlyStyle) {
     const styles = S.list.filter((s) => (!onlyStyle || s.id === onlyStyle) && S.tracksOf(s.id).some((t) => t.status === 'approved'));
     return {
-      app: 'MixMind', kind: 'style-library', v: 1, exported: new Date().toISOString(),
+      app: 'MIXMIND by Piradex', kind: 'style-library', v: 1, exported: new Date().toISOString(),
       styles: styles.map((s) => ({ name: s.name, base: s.base, builtin: !!s.builtin, tracks: S.tracksOf(s.id).filter((t) => t.status === 'approved').map((t) => ({ name: t.name, kind: t.kind, features: t.features || null, balance: t.balance || null, added: t.added })) })),
     };
   };
   S.importLibrary = async function (lib, o) {
     o = o || {};
-    if (!lib || lib.kind !== 'style-library' || !Array.isArray(lib.styles)) throw new Error('Ficheiro não é uma biblioteca de estilos MixMind');
+    if (!lib || lib.kind !== 'style-library' || !Array.isArray(lib.styles)) throw new Error('Ficheiro não é uma biblioteca de estilos MIXMIND');
     let nT = 0, nS = 0;
     for (const s of lib.styles) {
       let st = S.byName(s.name);

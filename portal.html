@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Enviar músicas · MIXMIND by Piradex</title>
+  <meta name="description" content="Envia músicas ou stems para treinar os estilos do MIXMIND by Piradex.">
+  <meta name="theme-color" content="#07090d">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css?v=1.6">
+  <style>
+    .portal { max-width: 720px; margin: 0 auto; padding: 48px 16px 80px; }
+    .portal h1 { font-size: clamp(26px, 5vw, 38px); margin: 6px 0 10px; letter-spacing: -0.02em; }
+    .portal .card { background: var(--panel, #0d1117); border: 1px solid var(--line, rgba(255,255,255,.08)); border-radius: 16px; padding: 22px; margin-top: 22px; }
+    .portal label.lb { display: block; font-size: 12.5px; color: var(--muted, #8b93a1); margin: 14px 0 6px; }
+    .portal .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 560px) { .portal .two { grid-template-columns: 1fr; } }
+    .portal .files { margin-top: 10px; font-size: 13px; }
+    .portal .files div { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line, rgba(255,255,255,.06)); }
+    .portal .files span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .portal .note { font-size: 12.5px; color: var(--muted, #8b93a1); line-height: 1.55; }
+    .portal .ok { color: #5eead4; } .portal .err { color: #f87171; }
+    .portal textarea.field { height: 80px; padding-top: 10px; resize: vertical; }
+  </style>
+</head>
+<body>
+  <main class="portal">
+    <div class="eyebrow">MIXMIND by Piradex</div>
+    <h1>Envia músicas para treinar os estilos</h1>
+    <p class="note">Masters finais ou stems pós-fader de Kizomba, Semba, Kuduro, Afro House… Depois de aprovados, a IA mede-os (curva tonal, loudness, dinâmica, estéreo, balanço) e <b>apaga o áudio</b>. Só as medidas ficam na biblioteca.</p>
+    <div id="off" class="card" style="display:none"><b>O portal ainda não está configurado.</b><p class="note">O administrador tem de preencher <span class="mono">config.js</span> com a URL e a chave pública do Supabase (ver README).</p></div>
+    <form id="f" class="card" style="display:none" autocomplete="on">
+      <div class="two">
+        <div><label class="lb" for="nm">Nome / artista</label><input class="field" id="nm" required maxlength="120"></div>
+        <div><label class="lb" for="em">Email</label><input class="field" id="em" type="email" required maxlength="160"></div>
+      </div>
+      <div class="two">
+        <div><label class="lb" for="sty">Estilo</label><select class="field" id="sty" required></select></div>
+        <div><label class="lb" for="kind">Tipo</label><select class="field" id="kind"><option value="master">Músicas finais (masters)</option><option value="stems">Stems pós-fader (uma sessão)</option></select></div>
+      </div>
+      <label class="lb" for="tt">Título</label><input class="field" id="tt" maxlength="200" placeholder="Nome da música (ou da sessão de stems)">
+      <label class="lb">Ficheiros (WAV, AIFF, FLAC, MP3)</label>
+      <div class="row wrap" style="gap:8px"><button type="button" class="btn sm" id="pick">Escolher ficheiros</button><button type="button" class="btn sm ghost" id="pickDir">Escolher pasta</button></div>
+      <div class="files" id="list"></div>
+      <label class="lb" for="nt">Notas (opcional)</label><textarea class="field" id="nt" maxlength="2000" placeholder="Ex.: referência de som, ano, quem misturou…"></textarea>
+      <label class="check small" style="margin-top:16px;align-items:flex-start;gap:10px"><input type="checkbox" id="rights" required style="margin-top:3px"><span>Confirmo que sou titular dos direitos destas gravações (ou tenho autorização) e autorizo a Piradex a analisá-las para treinar o MIXMIND. O áudio é apagado depois da análise e não é redistribuído; o meu email só serve para responder a este envio.</span></label>
+      <div class="row" style="justify-content:space-between;margin-top:18px;gap:12px"><span id="msg" class="small"></span><button class="btn primary" id="go" type="submit">Enviar</button></div>
+      <div class="bar" style="height:5px;margin-top:12px;display:none" id="pb"><i style="width:0"></i></div>
+    </form>
+    <p class="note" style="margin-top:22px">Ficheiros até 500 MB cada. O envio fica pendente até ser revisto.</p>
+  </main>
+  <script src="config.js"></script>
+  <script>window.MM = {};</script>
+  <script src="js/core/cloud.js?v=1.6"></script>
+  <script src="js/portal.js?v=1.6"></script>
+</body>
+</html>

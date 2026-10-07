@@ -1,4 +1,4 @@
-/* MixMind — sessão de demonstração.
+/* MIXMIND — sessão de demonstração.
  * Sintetiza 15 stems de uma Kizomba (94 BPM, F♯ menor) diretamente em JavaScript,
  * com nomes propositadamente errados/genéricos para demonstrar a identificação por áudio.
  */

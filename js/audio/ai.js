@@ -1,4 +1,4 @@
-/* MixMind — motor de decisões de mistura ("AI proposes. Engineer decides.")
+/* MIXMIND — motor de decisões de mistura ("AI proposes. Engineer decides.")
  * Segue a ordem de um engenheiro: ouvir → compreender → protagonistas → gain staging → balanço →
  * resolver problemas → espaço → dinâmica → profundidade → movimento (automação) → mix bus.
  * Todas as decisões são explicáveis, têm confiança e respeitam stems bloqueados e edições manuais.
@@ -62,6 +62,7 @@
     'Electric Bass': -3, 'Acoustic Guitar': -7, 'Electric Guitar': -8, Piano: -8, Rhodes: -8, Synth: -8,
     Pad: -13, Strings: -11, Brass: -8, FX: -14, Risers: -12, Impacts: -10, Ambience: -16, 'Reference Track': -60,
   };
+  MM.BAL_TABLE = BAL;
   const HPF = {
     'Lead Vocal': 85, 'Backing Vocal': 120, Choir: 110, Adlibs: 140, Kick: 28, Snare: 90, Clap: 140, 'Hi-Hat': 320,
     Shaker: 380, Percussion: 110, Congas: 90, 'Drum Loop': 30, Bass: 30, 'Sub Bass': 22, 'Electric Bass': 32,
@@ -90,6 +91,7 @@
     sat: { on: false, model: 'tape', drive: 0, mix: 0.3 },
     duck: { on: false, src: null, freq: 120, depth: 0 },
     sendRev: -60, revType: 'plate', sendDly: -60,
+    polarity: false, align: 0,
   });
 
   // ---------- utilitários de espectro ----------
@@ -163,6 +165,10 @@
       // balanço aprendido com stems pós-fader do estilo (já é por stem individual)
       const lb = MM.styles && MM.styles.learnedBalance ? MM.styles.learnedBalance(state.music.genre, s.role) : null;
       if (lb && s.role !== 'Lead Vocal') { t = D.lerp(t, lb.value, lb.weight); s._learned = lb; } else delete s._learned;
+      // modelo do engenheiro (o teu arquivo): pesa na medida em que bateu as regras na validação cruzada
+      const em = MM.engineer && MM.engineer.predict ? MM.engineer.predict(s, state) : null;
+      s._eng = em;
+      if (em && em.balRes !== undefined && em.wBal > 0.03) t += em.balRes * em.wBal; // o que TU fazes de diferente da regra, pesado pela validação
       const defH = MM.ROLES[s.role].hier;
       const hv = { P: 0, S: 1, B: 2 };
       t += (hv[defH] - hv[s.hier]) * 2.5; // hierarquia escolhida pelo utilizador
@@ -171,7 +177,7 @@
       if (!vocal) t += 2; // instrumental: sem referência de voz
       if (set(s, 'fader', +t.toFixed(1))) {
         const why = s.hier !== defH ? ` (hierarquia ${s.hier === 'P' ? 'Primary' : s.hier === 'S' ? 'Secondary' : 'Background'} definida por ti)` : '';
-        const src = s._learned ? `aprendida de ${s._learned.n} ${s._learned.n === 1 ? 'sessão' : 'sessões'} de ${state.music.genre} na tua biblioteca` : `típica de ${state.music.genre}`;
+        const src = (s._learned ? `aprendida de ${s._learned.n} ${s._learned.n === 1 ? 'sessão' : 'sessões'} de ${state.music.genre} na tua biblioteca` : `típica de ${state.music.genre}`) + (s._eng && s._eng.wBal > 0.03 ? ` + o teu modelo de engenheiro (${s._eng.sessions} sessões: costumas pôr ${fmtDb(s._eng.balRes)} face à regra; peso ${Math.round(s._eng.wBal * 100)} %)` : '');
         ex(s, 'Balanço', `Fader em ${fmtDb(t)} relativo à voz: relação ${src} para ${MM.ROLES[s.role].pt}${why}.`, s._learned ? 0.9 : 0.86);
       }
     });
@@ -268,8 +274,25 @@
         if (Math.abs(c.gain) < 0.4) return;
         eq.push({ type: c.type, freq: c.freq, gain: c.gain, q: c.q, on: true, why: c.why });
       });
+      // modelo do engenheiro: a forma tonal que TU costumas dar a este tipo de stem (em 7 bandas), menos o que o EQ acima já faz
+      const em = s._eng;
+      if (em && em.d7 && em.wEq > 0.05) {
+        const C7 = [[ 'lowshelf', 70, 0.7 ], [ 'peaking', 120, 0.9 ], [ 'peaking', 330, 0.9 ], [ 'peaking', 1000, 0.8 ], [ 'peaking', 3200, 0.9 ], [ 'peaking', 7000, 0.9 ], [ 'highshelf', 11000, 0.7 ]];
+        const fc = [40, 110, 320, 1000, 3200, 7000, 13000], pb = s.features.bands;
+        const resp = fc.map((f) => eq.reduce((a, e) => a + 20 * Math.log10(Math.max(1e-6, D.analogMag(e.type, e.freq, e.q, e.gain, f) || 1)), 0));
+        const shape = (d) => { const tot = 10 * Math.log10(pb.reduce((a, p, k) => a + p * Math.pow(10, d[k] / 10), 0) || 1); return d.map((v) => v - tot); };
+        const want = shape(em.d7), have = shape(resp);
+        const res = want.map((v, k) => (v - have[k]) * em.wEq).map((v, k) => (pb[k] < 0.01 ? 0 : v));
+        res.map((v, k) => [v, k]).filter(([v]) => Math.abs(v) >= 0.8).sort((a, b) => Math.abs(b[0]) - Math.abs(a[0])).slice(0, 2).forEach(([v, k]) => {
+          if (eq.length >= guard.bands || eq.some((e) => Math.abs(Math.log2(e.freq / C7[k][1])) < 0.6)) return;
+          const g = +D.clamp(v, -guard.eq, guard.eq * 0.6).toFixed(1);
+          eq.push({ type: C7[k][0], freq: C7[k][1], gain: g, q: C7[k][2], on: true, why: `o teu estilo de EQ (modelo do engenheiro, ${em.sessions} sessões)` });
+        });
+      }
+      // bandas criadas pelo utilizador para automação mantêm-se (até 8 bandas no total)
+      (s.p.eq || []).filter((e) => e && e.user).forEach((e) => { if (eq.length < 8) eq.push(e); });
       s.p.eq = eq;
-      eq.forEach((e) => ex(s, 'EQ', `${e.gain < 0 ? 'Corte' : 'Realce'} de ${fmtDb(Math.abs(e.gain)).replace('+', '')} em ${hz(e.freq)} (Q ${fmt(e.q)}): ${e.why}${e.gain < 0 ? ' detetada no espectro médio' : ''}.`, e.why === 'ressonância' ? 0.82 : 0.88));
+      eq.filter((e) => !e.user).forEach((e) => ex(s, 'EQ', `${e.gain < 0 ? 'Corte' : 'Realce'} de ${fmtDb(Math.abs(e.gain)).replace('+', '')} em ${hz(e.freq)} (Q ${fmt(e.q)}): ${e.why}${e.gain < 0 ? ' detetada no espectro médio' : ''}.`, e.why === 'ressonância' ? 0.82 : 0.88));
       eqConfs.push(s.conf);
     });
 
@@ -287,6 +310,9 @@
       else if (fam === 'snare') { gr = 3 + aggr * 0.5; ratio = 3; atk = 10; rel = 100; why = 'corpo controlado'; }
       else if (fam === 'loop') { gr = 3; ratio = 3; atk = 15; rel = 120; why = 'coesão do loop'; }
       else if (['keys', 'guitar', 'synth'].includes(fam) && f.crest > 14) { gr = 2 + pol * 0.5; ratio = 2; atk = 20; rel = 150; why = `picos altos (crest ${fmt(f.crest)} dB)`; }
+      // modelo do engenheiro: quanto costumas reduzir o crest deste tipo de stem (≈ dB de compressão nos picos)
+      const emc = s._eng;
+      if (emc && emc.dCrest !== undefined && emc.wComp > 0.05) { const want = D.clamp(-emc.dCrest, 0, 12); gr = D.lerp(gr, want, emc.wComp); if (gr >= 1 && !why) why = 'como costumas comprimir este tipo de stem (modelo do engenheiro)'; }
       gr = Math.min(gr, guard.gr);
       if (gr < 1) { s.p.comp = Object.assign(MM.defaultParams().comp, { on: false }); return; }
       ratio = D.clamp(ratio, 1.5, 8);
@@ -386,6 +412,29 @@
         ex(b, 'Masking', `Reduzi até ${fmt(c.cut)} dB a ${hz(c.freq)} no ${b.label.toLowerCase()} porque estava a mascarar ${a.role === 'Lead Vocal' ? 'o corpo da voz' : a.label.toLowerCase()} (${Math.round(c.overlap * 100)} % de sobreposição). O corte só atua quando ${a.label.toLowerCase()} toca.`, 0.88);
       }
     });
+
+    // 7b) correções que se ajustam até resolver: sobe o corte (em passos de 0,5 dB, até ao limite do modo de proteção)
+    //     até a sobreposição prevista cair para metade (ou abaixo de 20 %)
+    if (MM.insight && MM.insight.simulateMask) {
+      const maxCut = { conservative: 3, normal: 6, free: 9 }[state.settings.guard] || 6;
+      conflicts.forEach((c) => {
+        if (!c.action || /nenhuma|limite/.test(c.action)) return;
+        const b = state.stems.find((x) => x.id === c.b), a = state.stems.find((x) => x.id === c.a);
+        const d = c.kind === 'duck' ? b.p.duck : (b.p.dyn || []).find((x) => x.src === c.a);
+        if (!d) return;
+        const key = c.kind === 'duck' ? 'depth' : 'cut';
+        const base = MM.insight.maskDetail(state, c, 'pre');
+        if (!base) return;
+        const o0 = base.overlap, goal = Math.max(0.2, o0 * 0.5);
+        let amt = d[key], pred = MM.insight.simulateMask(state, c, amt);
+        const start = amt, p0 = pred;
+        while (pred !== null && pred > goal && amt < maxCut) { amt = +(amt + 0.5).toFixed(1); pred = MM.insight.simulateMask(state, c, amt); }
+        d[key] = amt; c.cut = amt; c.overlap0 = +o0.toFixed(2); c.predicted = pred !== null ? +pred.toFixed(2) : null;
+        c.action = c.kind === 'duck' ? `duck <${Math.round(d.freq || 120)} Hz ${fmtDb(-amt)} com o ${a.label.toLowerCase()}` : `EQ dinâmico ${fmtDb(-amt)} @ ${hz(d.freq)}`;
+        if (amt > start + 0.01) ex(b, 'Masking', `Corte ajustado de ${fmt(start)} para ${fmt(amt)} dB até resolver: sobreposição prevista com ${a.label.toLowerCase()} ${Math.round(o0 * 100)} % → ${Math.round((pred || 0) * 100)} %${pred > goal ? ` (limite do modo de proteção: ${maxCut} dB)` : ''}. Verifica em Análise → Depois.`, 0.84);
+        else if (p0 !== null) ex(b, 'Masking', `Corte de ${fmt(amt)} dB chega: sobreposição prevista ${Math.round(o0 * 100)} % → ${Math.round(p0 * 100)} %.`, 0.84);
+      });
+    }
 
     // 8) mix bus
     if (!state.bus.manual) {
@@ -495,6 +544,8 @@
   MM.buildAutomation = function (state, stems, ex) {
     const keepManual = {};
     (state.automation || []).forEach((l) => { if (l.manual && l.manual.length) keepManual[l.id] = l.manual; });
+    // lanes criadas pelo utilizador sobrevivem a qualquer reconstrução da automação da IA
+    const userLanes = (state.automation || []).filter((l) => l.user && (l.target.type !== 'stem' || state.stems.some((s) => s.id === l.target.id && !s.removed)));
     const lanes = [];
     const secs = state.music.sections;
     const dur = state.music.duration;
@@ -509,6 +560,11 @@
       return out;
     };
     const add = (l) => { l.manual = keepManual[l.id] || []; l.enabled = l.enabled || { ai: true, manual: true }; lanes.push(l); };
+    // dinâmica das secções aprendida no treino do estilo (como o refrão abre face ao verso)
+    const SP = MM.styles && MM.styles.sectionProfile ? MM.styles.sectionProfile(state.music.genre) : null;
+    const grpOf = (name) => (MM.styles && MM.styles.groupOf ? MM.styles.groupOf(name) : /Refr/.test(name) ? 'chorus' : 'verse');
+    const spK = SP ? SP.conf : 0;
+    const vocOff = (t) => { if (!SP || !SP.vocal) return 0; const sc = secAt(t); return sc && grpOf(sc.name) === 'chorus' ? D.clamp(SP.vocal.med, -2, 2) * spK : 0; };
 
     // --- vocal rider ---
     const v = stems.find((s) => s.role === 'Lead Vocal');
@@ -529,7 +585,7 @@
       let breaths = 0;
       for (let t = 0; t < vl.length; t++) {
         let desired;
-        if (act[t]) desired = target - (vl[t] - 10 * Math.log10(inst[t] + 1e-14));
+        if (act[t]) desired = target + vocOff(t * blockSec) - (vl[t] - 10 * Math.log10(inst[t] + 1e-14));
         else {
           // respiração: nível baixo mas presente imediatamente antes de uma frase
           const next = act.indexOf(true, t);
@@ -576,7 +632,9 @@
     // --- pad: filtro passa-baixo por secção ---
     const pad = stems.find((s) => ['Pad', 'Strings'].includes(s.role));
     if (pad && !pad.locked) {
-      const val = (s) => (/Refrão final/.test(s.name) ? 14000 : /Refr/.test(s.name) ? 12000 : /Pré/.test(s.name) ? 7000 : /Vers/.test(s.name) ? 4200 : /Bridge/.test(s.name) ? 2200 : 3500);
+      const val0 = (s) => (/Refrão final/.test(s.name) ? 14000 : /Refr/.test(s.name) ? 12000 : /Pré/.test(s.name) ? 7000 : /Vers/.test(s.name) ? 4200 : /Bridge/.test(s.name) ? 2200 : 3500);
+      // brilho aprendido: refrões mais (ou menos) abertos do que a base
+      const val = (s) => (SP && SP.chorus && grpOf(s.name) === 'chorus' ? D.clamp(val0(s) * Math.pow(2, (D.clamp(SP.chorus.bright, -3, 3) / 3) * spK), 1500, 18000) : val0(s));
       const pts = [];
       secs.forEach((s) => { pts.push([s.start + 0.05, val(s)], [Math.max(s.start + 0.1, s.end - 0.6), val(s)]); });
       add({ id: 'lpf:' + pad.id, label: pad.label, sub: 'Filtro passa-baixo', target: { type: 'stem', id: pad.id, param: 'lpf' }, unit: 'Hz', log: true, min: 500, max: 20000, def: 20000, ai: { points: pts }, show: true });
@@ -599,10 +657,42 @@
       if (ex) ex(adl, 'Automação', 'Delay throws: o send de delay abre no fim de cada adlib e fecha antes da próxima frase da voz.', 0.84);
     }
     // --- master: largura por secção ---
-    const wv = (s) => (/Refrão final/.test(s.name) ? 112 : /Refr/.test(s.name) ? 108 : /Bridge/.test(s.name) ? 92 : /Pré/.test(s.name) ? 104 : 100);
+    const wv0 = (s) => (/Refrão final/.test(s.name) ? 112 : /Refr/.test(s.name) ? 108 : /Bridge/.test(s.name) ? 92 : /Pré/.test(s.name) ? 104 : 100);
+    // largura aprendida: rácio largura(refrão)/largura(verso) medido nas misturas do estilo
+    const wv = (s) => {
+      const g = grpOf(s.name), d = SP && SP[g];
+      if (!d || g === 'verse' || !d.width) return wv0(s);
+      const learned = 100 * D.clamp(d.width, 0.85, 1.3) + (/final/.test(s.name) ? 3 : 0);
+      return Math.round(D.lerp(wv0(s), learned, spK));
+    };
     const wpts = [];
     secs.forEach((s) => wpts.push([s.start + 0.05, wv(s)], [Math.max(s.start + 0.1, s.end - 0.5), wv(s)]));
     add({ id: 'width:master', label: 'Master', sub: 'Largura estéreo', target: { type: 'master', param: 'width' }, unit: '%', rel: true, min: 60, max: 150, def: 100, ai: { points: wpts }, show: true });
+
+    // --- volume por secção aprendido (stems treinados): o que o engenheiro faz para além do arranjo ---
+    if (SP && SP.roles && Object.keys(SP.roles).length) {
+      const groups = { chorus: [], verse: [], low: [] };
+      secs.forEach((sc) => groups[grpOf(sc.name)].push([sc.start, sc.end]));
+      const luG = (bm, g) => { let s2 = 0, n = 0; groups[g].forEach(([a, b]) => { const i0 = Math.floor(a * 10), i1 = Math.min(bm.length, Math.ceil(b * 10)); for (let i = i0; i < i1; i++) { s2 += bm[i]; n++; } }); return n ? -0.691 + 10 * Math.log10(s2 / n + 1e-20) : -99; };
+      const learnedTxt = [];
+      if (groups.chorus.length && groups.verse.length) stems.forEach((s) => {
+        if (s.role === 'Lead Vocal' || s.locked || !s.features.blockMs) return;
+        const want = (g) => { const tab = g === 'chorus' ? SP.roles : SP.rolesLow; const r = tab && tab[s.role]; if (!r || !groups[g].length) return 0; const v = luG(s.features.blockMs, 'verse'), x = luG(s.features.blockMs, g); if (v < -50 || x < -50) return 0; return D.clamp(r.med - (x - v), -3, 3) * spK * 0.8; };
+        const off = { chorus: want('chorus'), low: want('low'), verse: 0 };
+        if (Math.abs(off.chorus) < 0.5 && Math.abs(off.low) < 0.5) return;
+        const pts = [];
+        secs.forEach((sc) => { const v = +off[grpOf(sc.name)].toFixed(1); pts.push([sc.start + 0.05, v], [Math.max(sc.start + 0.1, sc.end - 0.25), v]); });
+        add({ id: 'ride:' + s.id, label: s.label, sub: `Volume por secção · aprendido (${state.music.genre})`, target: { type: 'stem', id: s.id, param: 'ride' }, unit: 'dB', min: -12, max: 6, def: 0, ai: { points: pts }, show: true, kind: 'learned' });
+        if (Math.abs(off.chorus) >= 0.5) learnedTxt.push(`${s.label} ${D.fmtDb(off.chorus)} dB no refrão`);
+      });
+      if (ex) {
+        const c = SP.chorus;
+        ex(null, 'Automação', `Aprendido de ${state.music.genre} (${SP.n} ${SP.n === 1 ? 'exemplo' : 'exemplos'}, confiança ${Math.round(spK * 100)} %): ${c ? `no refrão a mix sobe ${fmt(c.lu)} LU${c.width ? `, largura ×${fmt(c.width, 2)}` : ''}, agudos ${D.fmtDb(c.bright)} dB face ao verso` : 'estrutura do estilo'}${SP.vocal ? `; a voz fica ${D.fmtDb(SP.vocal.med)} dB face ao instrumental no refrão` : ''}. ${learnedTxt.length ? 'Ajustes por secção: ' + learnedTxt.slice(0, 5).join(', ') + '.' : 'O arranjo destes stems já faz o contraste — sem ajustes de volume.'}`, 0.8 + 0.12 * spK);
+      }
+    } else if (SP && ex) {
+      const c = SP.chorus;
+      ex(null, 'Automação', `Aprendido de ${state.music.genre} (${SP.n} ${SP.n === 1 ? 'master' : 'masters'}): ${c ? `no refrão a mix sobe ${fmt(c.lu)} LU${c.width ? `, largura ×${fmt(c.width, 2)}` : ''}, agudos ${D.fmtDb(c.bright)} dB` : ''} — aplicado à largura do master e ao filtro do pad por secção. Treina com stems pós-fader para aprender também o volume de cada instrumento por secção.`, 0.78);
+    }
 
     // --- automação interna (sidechain, EQ dinâmico, de-esser, ducking de efeitos) ---
     stems.forEach((s) => {
@@ -654,48 +744,164 @@
       add({ id: 'duck:plate', label: 'Plate (retorno)', sub: 'Ducking pela voz', target: { type: 'fx', id: 'plate', param: 'duck' }, unit: 'dB', min: -12, max: 0, def: 0, scale: state.fx.plate.duck, ai: { t0: 0, rate: 10, values: vals.map((x) => x * state.fx.plate.duck) }, show: false, internal: true });
       add({ id: 'duck:delay', label: 'Delay (retorno)', sub: 'Ducking pela voz', target: { type: 'fx', id: 'delay', param: 'duck' }, unit: 'dB', min: -12, max: 0, def: 0, ai: { t0: 0, rate: 10, values: vals.map((x) => x * state.fx.delay.duck) }, show: false, internal: true });
     }
+    userLanes.forEach((u) => { const ex = lanes.find((l) => l.id === u.id); if (ex) { ex.show = true; ex.user = true; } else lanes.push(u); });
     state.automation = lanes;
     return lanes;
   };
 
   // ---------- score de qualidade ----------
+  /* Score ancorado em referências EXTERNAS (v1.6) — deixa de comparar a mistura com as próprias decisões da IA.
+   * Cada critério escolhe a âncora mais forte disponível, por esta ordem:
+   *   1. estilo treinado (masters/stems aprovados: balanço por papel, curva tonal ± desvio, PLR, largura, mono nos graves)
+   *   2. faixa de referência carregada (curva tonal, PLR, largura)
+   *   3. norma objetiva (física/entrega: alvo de loudness, ceiling, correlação, regras de balanço por papel)
+   * O masking usa a medição real depois do processamento quando está atualizada (senão, a previsão da simulação). */
+  const NORM_TONE = { slopeLo: -5.2, slopeHi: -1.6, lowLo: -2, lowHi: 9 }; // inclinação 250 Hz–12,5 kHz (dB/oitava, bandas de 1/3) e graves 40–80 Hz face a 100 Hz–4 kHz
+  MM.scoreAnchors = function (state) {
+    const prof = MM.styles && MM.styles.profile ? MM.styles.profile(state.music && state.music.genre) : null;
+    const r = (state.refs || []).find((x) => x.id === state.activeRef) || (state.refs || [])[0];
+    return { prof: prof && prof.n + (prof.nStems || 0) > 0 ? prof : null, ref: r && r.metrics ? r : null, style: state.music && state.music.genre };
+  };
+  /** LU estimado de cada stem na mistura: medido (pós-processamento) quando há medição atual, senão nível + trim + fader. */
+  MM.stemLU = function (state, s, o) {
+    o = o || {};
+    if (o.raw) return s.features.lufs;
+    const I = MM.insight, f = s.features;
+    if (I && I.postFresh && I.postFresh(state) && state.post.bands[s.id] && f.bandTL) {
+      const P = state.post.bands[s.id], nb = f.bandFrames, fr = D.THIRD_OCT;
+      let pk = 0, rk = 0;
+      for (let k = 0; k < 31; k++) {
+        const fc = fr[k] || 1000, kw = (D.analogMag('highshelf', 1681, 0.7071, 4, fc) ** 2) * (fc * fc) / (fc * fc + 38 * 38);
+        let ps = 0, rs = 0; for (let t = 0; t < nb; t++) { ps += P[t * 31 + k]; rs += f.bandTL[t * 31 + k]; }
+        pk += ps * kw; rk += rs * kw;
+      }
+      if (pk > 0 && rk > 0) return f.lufs + 10 * Math.log10(pk / rk);
+    }
+    return f.lufs + (s.p.trim || 0) + (s.p.fader || 0);
+  };
   MM.computeScore = function (state, m, o) {
     o = o || {};
     // m: métricas do master/mix renderizados (ver engine.measure)
-    const stems = state.stems.filter((s) => !s.removed && s.role !== 'Reference Track');
+    const stems = state.stems.filter((s) => !s.removed && s.role !== 'Reference Track' && s.features);
     const tgt = state.master.target;
-    const sc = {};
+    const sc = {}, anchor = {}, detail = {};
     const clamp = (v) => Math.round(D.clamp(v, 0, 100));
-    // balanço: voz vs instrumental (mediana do rider ≈ alvo), proximidade das relações de género
-    const v = stems.find((s) => s.role === 'Lead Vocal');
-    let balDev;
-    if (o.raw) {
-      const vl = v ? v.features.lufs : -20;
-      balDev = stems.reduce((a, s) => a + Math.min(12, Math.abs((s.features.lufs - vl) - (BAL[s.role] !== undefined ? BAL[s.role] : -10))), 0) / Math.max(1, stems.length) * 0.6;
-    } else balDev = stems.reduce((a, s) => a + Math.abs((s.p.fader || 0) - (s.ai ? s.ai.fader : s.p.fader)), 0) / Math.max(1, stems.length);
-    sc.balance = clamp(95 - balDev * 3 - (v ? 0 : 3));
-    const residual = (state.conflicts || []).reduce((a, c) => a + c.overlap * (o.raw || !c.action || c.action === 'nenhuma' ? 1 : c.action === 'limite de bandas' ? 0.55 : 0.2), 0);
-    sc.clarity = clamp(97 - residual * 13);
+    const { prof, ref, style } = MM.scoreAnchors(state);
+    const conf = prof ? D.clamp(prof.conf || 0.5, 0.3, 1) : 0;
+    const styleName = (k) => `estilo ${style} (${k} faixa${k === 1 ? '' : 's'})`;
+    const refName = ref ? `referência “${ref.name}”` : '';
+    const isMaster = !o.raw && !o.mix;
+    // ---------- balanço por papel ----------
+    const lu = stems.map((s) => ({ s, lu: MM.stemLU(state, s, o) })).filter((x) => isFinite(x.lu) && x.lu > -70);
+    let nLearned = 0;
+    const tgtOf = (role) => { const b = prof && prof.balance && prof.balance[role]; if (b) { nLearned++; return { v: b.med, tol: D.clamp((b.spread || 3) / 2, 1.5, 4) }; } return { v: BAL[role] !== undefined ? BAL[role] : -10, tol: 3 }; };
+    const rows = lu.map((x) => Object.assign(x, { t: tgtOf(x.s.role) }));
+    const off = rows.length ? D.median(rows.map((x) => x.lu - x.t.v)) : 0; // nível global livre: só contam as relações
+    rows.forEach((x) => { x.dev = x.lu - x.t.v - off; });
+    const balDev = rows.reduce((a, x) => a + Math.min(10, Math.max(0, Math.abs(x.dev) - x.t.tol)), 0) / Math.max(1, rows.length);
+    sc.balance = clamp(97 - balDev * 7);
+    anchor.balance = nLearned ? `${styleName(prof.nStems)} · ${nLearned}/${rows.length} papéis aprendidos` : 'norma por papel (sem stems treinados neste estilo)';
+    detail.balance = rows.filter((x) => Math.abs(x.dev) > x.t.tol).sort((a, b) => Math.abs(b.dev) - Math.abs(a.dev)).slice(0, 3).map((x) => `${x.s.label || x.s.name} ${x.dev > 0 ? '+' : ''}${fmt(x.dev)} dB`).join(' · ');
+    // ---------- voz face ao instrumental (VIR) ----------
+    const v = rows.find((x) => x.s.role === 'Lead Vocal');
+    if (v) {
+      const others = rows.filter((x) => x !== v);
+      const pw = (arr, key) => 10 * Math.log10(arr.reduce((a, x) => a + Math.pow(10, key(x) / 10), 0) + 1e-12);
+      const virA = v.lu - pw(others, (x) => x.lu), virT = v.t.v - pw(others, (x) => x.t.v);
+      const dv = virA - virT;
+      sc.vocal = clamp(97 - Math.max(0, Math.abs(dv) - 1) * 7);
+      anchor.vocal = prof && prof.balance && prof.balance['Lead Vocal'] !== undefined || nLearned ? styleName(prof.nStems) : 'norma por papel';
+      detail.vocal = `voz/instrumental ${fmt(virA)} dB · alvo ${fmt(virT)} dB`;
+    } else { sc.vocal = 85; anchor.vocal = 'sem voz principal'; }
+    // ---------- clareza (masking) ----------
+    const I = MM.insight, fresh = !o.raw && I && I.postFresh && I.postFresh(state);
+    const corrDepth = (c) => {
+      const B = state.stems.find((x) => x.id === c.b);
+      if (!B) return 0;
+      if (c.kind === 'duck' && B.p.duck && B.p.duck.on && B.p.duck.src === c.a) return B.p.duck.depth || 0;
+      const d = (B.p.dyn || []).find((x) => x.src === c.a);
+      return d ? d.cut : 0;
+    };
+    let src = o.raw ? 'medido nos stems originais' : fresh ? 'medido depois do processamento' : 'previsão da simulação';
+    const ovNow = (c) => {
+      if (o.raw) return c.overlap;
+      if (fresh) { const md = I.maskDetail(state, c, 'post'); if (md) return md.overlap; }
+      const dp = corrDepth(c);
+      if (c.predicted !== undefined && Math.abs(dp - (c.cut || 0)) < 0.25) return c.predicted;
+      if (!fresh) src = 'estimativa';
+      return c.overlap * (dp > 0 ? D.clamp(1 - dp * 0.09, 0.3, 1) : c.action === 'limite de bandas' ? 0.8 : 1);
+    };
+    const confl = (state.conflicts || []).map((c) => ({ c, ov: ovNow(c) }));
+    const FLOOR = 0.2; // sobreposição natural que não se ouve como masking
+    const residual = confl.filter((x) => x.c.kind !== 'duck').reduce((a, x) => a + Math.max(0, x.ov - FLOOR), 0);
+    sc.clarity = clamp(97 - residual * 16);
+    anchor.clarity = `masking ${src} · tolerância ${Math.round(FLOOR * 100)} % do tempo`;
+    detail.clarity = confl.filter((x) => x.c.kind !== 'duck' && x.ov > FLOOR).sort((a, b) => b.ov - a.ov).slice(0, 2).map((x) => `${x.c.bName || ''}/${x.c.aName || ''} ${Math.round(x.ov * 100)} %`).join(' · ');
+    // ---------- dinâmica ----------
     const plr = m.plr;
-    const plrTarget = D.clamp(-tgt - 0.5, 6, 14);
-    sc.dynamics = clamp(96 - Math.abs(plr - plrTarget) * 4 - Math.max(0, (m.gr || 0) - 4) * 3);
-    sc.stereo = clamp(97 - Math.abs(m.width - 0.45) * 40 - Math.max(0, 0.2 - m.corrMin) * 60);
-    sc.lowEnd = clamp(100 - (100 - m.monoLow) * 1.2 - (state.conflicts || []).filter((c) => c.kind === 'duck').reduce((a, c) => a + (o.raw || c.action === 'nenhuma' ? c.overlap * 25 : c.overlap * 6), 0));
-    sc.vocal = v ? (o.raw ? clamp(80 - Math.abs(v.features.lufs - D.mean(stems.map((s) => s.features.lufs))) * 0.8) : clamp(90 + Math.min(6, (state.rider.target - 0.5) * 3) - (v.p.fader < -3 ? 6 : 0))) : 80;
+    let plrT = D.clamp(-tgt - 0.5, 6, 14), plrTol = 1, dynA = `norma para ${fmt(tgt)} LUFS`;
+    if (isMaster && prof && prof.stat.plr) { const s1 = prof.stat.plr; plrT = s1.med * conf + plrT * (1 - conf); plrTol = D.clamp((s1.p75 - s1.p25) / 2, 0.7, 2.5); dynA = styleName(s1.n); }
+    else if (isMaster && ref && isFinite(ref.metrics.plr)) { plrT = ref.metrics.plr; plrTol = 1; dynA = refName; }
+    if (o.mix) { plrT += 2.5; dynA = 'pré-master: mais folga que o master'; }
+    sc.dynamics = clamp(97 - Math.max(0, Math.abs(plr - plrT) - plrTol) * 5 - Math.max(0, (m.gr || 0) - 4) * 3);
+    anchor.dynamics = dynA; detail.dynamics = `PLR ${fmt(plr)} dB · alvo ${fmt(plrT)} ± ${fmt(plrTol)}`;
+    // ---------- imagem estéreo ----------
+    let wT = 0.45, wTol = 0.12, stA = 'norma (lados ≈ 45 % do centro)';
+    if (prof && prof.stat.width) { const s1 = prof.stat.width; wT = s1.med; wTol = D.clamp((s1.p75 - s1.p25) / 2, 0.05, 0.2); stA = styleName(s1.n); }
+    else if (ref && isFinite(ref.metrics.width)) { wT = ref.metrics.width; wTol = 0.08; stA = refName; }
+    sc.stereo = clamp(97 - Math.max(0, Math.abs(m.width - wT) - wTol) * 60 - Math.max(0, 0.2 - m.corrMin) * 60);
+    anchor.stereo = stA; detail.stereo = `largura ${Math.round(m.width * 100)} % · alvo ${Math.round(wT * 100)} ± ${Math.round(wTol * 100)} %`;
+    // ---------- graves ----------
+    let mlT = 92, lowA = 'norma (graves em mono ≥ 92 %)';
+    if (prof && prof.stat.monoLow) { mlT = Math.min(98, prof.stat.monoLow.p25); lowA = styleName(prof.stat.monoLow.n); }
+    const duckRes = confl.filter((x) => x.c.kind === 'duck').reduce((a, x) => a + Math.max(0, x.ov - FLOOR), 0);
+    sc.lowEnd = clamp(98 - Math.max(0, mlT - m.monoLow) * 1.2 - duckRes * 25);
+    anchor.lowEnd = `${lowA} · kick/baixo ${src}`; detail.lowEnd = `mono <120 Hz ${Math.round(m.monoLow)} %`;
+    // ---------- loudness (alvo de entrega) ----------
     sc.loudness = clamp(100 - Math.abs(m.lufs - tgt) * 8 - Math.max(0, m.tp - state.master.ceiling) * 25);
+    anchor.loudness = `alvo de entrega ${fmt(tgt)} LUFS · ceiling ${fmt(state.master.ceiling)} dBTP`; detail.loudness = `${fmt(m.lufs)} LUFS · ${fmt(m.tp)} dBTP`;
+    // ---------- fase ----------
     sc.phase = clamp(100 - Math.max(0, 0.3 - m.corrMin) * 80 - (m.corr < 0.2 ? 20 : 0));
-    const w = { balance: 1.2, clarity: 1.2, dynamics: 1, stereo: 0.8, lowEnd: 1, vocal: 1.1, loudness: 0.8, phase: 0.9 };
+    anchor.phase = 'norma objetiva (correlação e compatibilidade mono)'; detail.phase = `correlação ${fmt(m.corr, 2)} · mínima ${fmt(m.corrMin, 2)}`;
+    // ---------- tonalidade ----------
+    const mine = I && I.curveOf ? I.curveOf(m.spectrum) : null;
+    if (mine) {
+      const F = I.THIRD;
+      const scoreVs = (curve, sd, tol0) => { let e = 0, n = 0; F.forEach((f, i) => { if (f < 31 || f > 14000) return; const tol = Math.max(tol0, sd ? sd[i] : 0); e += Math.max(0, Math.abs(mine[i] - curve[i]) - tol); n++; }); return e / Math.max(1, n); };
+      let err = 0, w = 0; const an = [];
+      if (prof && prof.curve31) { err += scoreVs(prof.curve31, prof.curve31sd, 1) * conf; w += conf; an.push(styleName(prof.n)); }
+      if (ref && ref.metrics.spectrum) { const rc = I.curveOf(ref.metrics.spectrum); if (rc) { const rw = D.clamp(state.refInfluence || 0.5, 0.3, 1); err += scoreVs(rc, null, 1.5) * rw; w += rw; an.push(refName); } }
+      if (w) { sc.tone = clamp(97 - (err / w) * 9); anchor.tone = an.join(' + '); }
+      else {
+        // norma larga: inclinação dos agudos e peso dos graves dentro do intervalo de masters comerciais
+        const xs = [], ys = []; F.forEach((f, i) => { if (f >= 250 && f <= 12500) { xs.push(Math.log2(f)); ys.push(mine[i]); } });
+        const mx = D.mean(xs), my = D.mean(ys); let nu = 0, de = 0; xs.forEach((x, i) => { nu += (x - mx) * (ys[i] - my); de += (x - mx) ** 2; });
+        const slope = nu / de, low = D.mean(F.map((f, i) => (f >= 40 && f <= 80 ? mine[i] : null)).filter((x) => x !== null));
+        const out = Math.max(0, NORM_TONE.slopeLo - slope, slope - NORM_TONE.slopeHi) * 6 + Math.max(0, NORM_TONE.lowLo - low, low - NORM_TONE.lowHi) * 2;
+        sc.tone = clamp(95 - out * 2);
+        anchor.tone = 'norma larga (sem estilo treinado nem referência)';
+        detail.tone = `inclinação ${fmt(slope)} dB/oit · graves ${low >= 0 ? '+' : ''}${fmt(low)} dB`;
+      }
+      if (w) { const dev = I.deviations(mine, prof && prof.curve31 ? prof.curve31 : I.curveOf(ref.metrics.spectrum), prof && prof.curve31 ? prof.curve31sd : null); detail.tone = dev.slice(0, 2).map((d) => `${d.label} ${d.db > 0 ? '+' : ''}${fmt(d.db)} dB`).join(' · ') || 'dentro da tolerância'; }
+    } else { sc.tone = null; }
+    const wts = { balance: 1.2, clarity: 1.2, dynamics: 1, stereo: 0.8, lowEnd: 1, vocal: 1.1, loudness: 0.8, phase: 0.9, tone: prof || ref ? 1.1 : 0.6 };
     let tot = 0, ws = 0;
-    Object.keys(w).forEach((k) => { tot += sc[k] * w[k]; ws += w[k]; });
+    Object.keys(wts).forEach((k) => { if (typeof sc[k] === 'number') { tot += sc[k] * wts[k]; ws += wts[k]; } });
     sc.overall = Math.round(tot / ws);
+    sc.anchor = anchor; sc.detail = detail;
+    sc.anchored = { style: prof ? style : null, ref: ref ? ref.name : null, measured: !!fresh };
     // recomendações
     const recs = [];
-    if (sc.dynamics < 88) recs.push({ text: `Dynamics ${sc.dynamics} — PLR ${fmt(plr)} dB (alvo ~${fmt(plrTarget)}). ${plr < plrTarget ? 'Reduzir a compressão do mix bus ou baixar o alvo de loudness?' : 'Pode aguentar mais cola no mix bus.'}`, action: plr < plrTarget ? 'lessBus' : 'moreBus', label: 'Aplicar' });
+    if (sc.dynamics < 88) recs.push({ text: `Dynamics ${sc.dynamics} — PLR ${fmt(plr)} dB (alvo ~${fmt(plrT)}, ${anchor.dynamics}). ${plr < plrT ? 'Reduzir a compressão do mix bus ou baixar o alvo de loudness?' : 'Pode aguentar mais cola no mix bus.'}`, action: plr < plrT ? 'lessBus' : 'moreBus', label: 'Aplicar' });
     const duck = (state.conflicts || []).find((c) => c.kind === 'duck');
     if (duck && sc.lowEnd < 92) recs.push({ text: `Low-end ${sc.lowEnd} — kick e baixo competem a ${duck.freq} Hz em ${Math.round(duck.overlap * 100)} % do tempo. Rever o ducking.`, action: 'moreDuck', label: 'Rever' });
     if (m.corrMin < 0.35) recs.push({ text: `Correlação mínima ${fmt(m.corrMin, 2)}; o alargamento pode colapsar em mono.`, action: 'phase', label: 'Ver fase' });
     if (sc.loudness < 90) recs.push({ text: `Loudness ${fmt(m.lufs)} LUFS vs alvo ${fmt(tgt)} — volta a correr o master para acertar o alvo.`, action: 'remaster', label: 'Aplicar' });
     if (sc.clarity < 88) recs.push({ text: `Clarity ${sc.clarity} — ainda há sobreposição de frequências. Reforçar o EQ dinâmico?`, action: 'moreDyn', label: 'Aplicar' });
+    const worst = rows.filter((x) => !x.s.locked && Math.abs(x.dev) > x.t.tol + 0.5 && !o.raw).sort((a, b) => Math.abs(b.dev) - Math.abs(a.dev)).slice(0, 3);
+    if (sc.balance < 90 && worst.length) recs.push({ text: `Balance ${sc.balance} — face a ${nLearned ? 'o ' + styleName(prof.nStems) : 'a norma por papel'}: ${worst.map((x) => `${x.s.label || x.s.name} ${x.dev > 0 ? '+' : ''}${fmt(x.dev)} dB`).join(', ')}.`, action: 'balance', fix: worst.map((x) => ({ id: x.s.id, db: -(Math.sign(x.dev) * (Math.abs(x.dev) - x.t.tol)) * 0.7 })), label: 'Aproximar' });
+    if (typeof sc.tone === 'number' && sc.tone < 86 && (prof || ref)) recs.push({ text: `Tonalidade ${sc.tone} — face a ${anchor.tone}: ${detail.tone}.`, action: 'tone', label: 'Ver curva' });
+    if (!o.raw && !fresh && state.stage === 'ready') recs.push({ text: 'Score com masking previsto: mede os stems processados para o score usar valores reais.', action: 'measure', label: 'Medir' });
     if (!recs.length) recs.push({ text: 'Mistura equilibrada. Compara com a referência com loudness match ligado para validar a tonalidade.', action: 'compare', label: 'Comparar' });
     sc.recs = recs;
     return sc;

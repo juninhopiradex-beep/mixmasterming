@@ -1,4 +1,4 @@
-/* MixMind — utilitários de interface */
+/* MIXMIND — utilitários de interface */
 (function () {
   const MM = (window.MM = window.MM || {});
   const D = MM.dsp;
@@ -35,6 +35,7 @@
     file: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>',
     folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    disc: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>',
     trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>',
     send: '<path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/>',
     brain: '<rect x="3" y="4" width="4.5" height="16" rx="1"/><rect x="9.5" y="4" width="4.5" height="16" rx="1"/><path d="m16 5.4 3.7-1 3.6 13.8-3.7 1z"/><path d="M3 8h4.5M9.5 16H14"/>',

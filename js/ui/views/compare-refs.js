@@ -1,4 +1,4 @@
-/* MixMind — vistas Comparar e Referências */
+/* MIXMIND — vistas Comparar e Referências */
 (function () {
   const MM = window.MM, D = MM.dsp, UI = MM.ui;
   const V = (MM.views = MM.views || {});

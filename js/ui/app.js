@@ -1,4 +1,4 @@
-/* MixMind — controlador da aplicação */
+/* MIXMIND — controlador da aplicação */
 (function () {
   const MM = (window.MM = window.MM || {});
   const D = MM.dsp, UI = MM.ui;
@@ -23,7 +23,13 @@
     App.recent = await MM.listProjects();
     App.render();
     App.loop();
-    MM.styles.load().then(() => { MM.styles.loaded = true; if (App.view === 'styles') App.refresh(); });
+    // recuperação: a última sessão não foi fechada normalmente (crash, separador morto, falta de luz)
+    const rcv = MM.project.pendingRecovery();
+    if (rcv && App.recent.some((r) => r.id === rcv.id)) {
+      UI.confirm('Recuperar sessão', `A sessão “${UI.esc(rcv.name)}” não foi fechada normalmente (${new Date(rcv.t).toLocaleString('pt-PT')}). Queres reabri-la com as últimas decisões guardadas?`, 'Recuperar').then((ok) => { if (ok) App.openProject(rcv.id); else MM.project.markClosed(); });
+    }
+    MM.styles.load().then(() => { MM.styles.loaded = true; if (App.view === 'styles') App.refresh(); if (MM.cloud) MM.cloud.loadLibrary().then((n) => { if (n && App.view === 'styles') App.refresh(); }); });
+    if (MM.engineer) MM.engineer.load();
   };
 
   App.ensureAudio = async function () {
@@ -44,7 +50,7 @@
     const mon = e.monitor;
     const hasRef = !!st.refBuffer;
     top.innerHTML = `
-      <div class="brand" ${App.hasSession() ? '' : 'data-view="home" style="cursor:pointer"'}>${UI.logo()}MixMind <small>AI Mixing & Mastering · v${MM.VERSION}</small></div>
+      <div class="brand" ${App.hasSession() ? '' : 'data-view="home" style="cursor:pointer"'}>${UI.logo()}<span class="brand-name">MIXMIND <em>by Piradex</em></span> <small>AI Mixing & Mastering · v${MM.VERSION}</small></div>
       ${App.hasSession() ? `<div class="proj"><input class="proj-name" value="${UI.esc(st.project.name)}" spellcheck="false" title="Nome do projeto">
         ${vers.length ? `<select class="field" id="verSel" style="height:32px;width:auto;font-size:13px">${vers.map((v) => `<option value="${v.id}"${v.id === st.currentVersion ? ' selected' : ''}>${UI.esc(v.name)}${v.score ? ' · ' + v.score : ''}</option>`).join('')}</select>` : ''}</div>` : ''}
       <div class="spacer"></div>
@@ -74,7 +80,7 @@
     if (!nav) return;
     nav.style.display = '';
     if (!App.hasSession() && st.stage !== 'analyzing') {
-      nav.innerHTML = `<a data-view="home" class="${App.view === 'home' ? 'on' : ''}">${UI.icon('upload')}Início</a><a data-view="styles" class="${App.view === 'styles' ? 'on' : ''}">${UI.icon('brain')}Estilos · treino</a><a data-view="plugin" class="${App.view === 'plugin' ? 'on' : ''}">${UI.icon('plug')}MixMind Master</a><div class="spacer"></div><a data-view="settings" class="${App.view === 'settings' ? 'on' : ''}">${UI.icon('gear')}Definições</a>`;
+      nav.innerHTML = `<a data-view="home" class="${App.view === 'home' ? 'on' : ''}">${UI.icon('upload')}Início</a><a data-view="styles" class="${App.view === 'styles' ? 'on' : ''}">${UI.icon('brain')}Estilos · treino</a><a data-view="plugin" class="${App.view === 'plugin' ? 'on' : ''}">${UI.icon('plug')}MIXMIND Master</a><a data-view="album" class="${App.view === 'album' ? 'on' : ''}">${UI.icon('disc') || UI.icon('music')}Álbum · DDP</a><div class="spacer"></div><a data-view="settings" class="${App.view === 'settings' ? 'on' : ''}">${UI.icon('gear')}Definições</a>`;
       return;
     }
     const items = st.mode === 'master' ? NAV.filter(([k]) => ['master', 'compare', 'refs', 'export'].includes(k)) : NAV;
@@ -82,14 +88,14 @@
     nav.innerHTML = items.map(([k, l, ic]) => {
       const dis = !App.hasSession() && k !== 'import';
       return `<a data-view="${k}" class="${App.view === k ? 'on' : ''}" ${dis ? 'style="opacity:.35;pointer-events:none"' : ''}>${UI.icon(ic)}${l}${k === 'import' && unres ? ` <span class="badge">${unres}</span>` : ''}</a>`;
-    }).join('') + `<span class="sep"></span><a data-view="styles" class="${App.view === 'styles' ? 'on' : ''}">${UI.icon('brain')}Estilos</a><a data-view="plugin" class="${App.view === 'plugin' ? 'on' : ''}">${UI.icon('plug')}MixMind Master</a><div class="spacer"></div><a data-view="settings" class="${App.view === 'settings' ? 'on' : ''}">${UI.icon('gear')}Definições</a>`;
+    }).join('') + `<span class="sep"></span><a data-view="styles" class="${App.view === 'styles' ? 'on' : ''}">${UI.icon('brain')}Estilos</a><a data-view="plugin" class="${App.view === 'plugin' ? 'on' : ''}">${UI.icon('plug')}MIXMIND Master</a><a data-view="album" class="${App.view === 'album' ? 'on' : ''}">${UI.icon('disc') || UI.icon('music')}Álbum</a><div class="spacer"></div><a data-view="settings" class="${App.view === 'settings' ? 'on' : ''}">${UI.icon('gear')}Definições</a>`;
   };
 
   App.renderView = function () {
     const ws = UI.$('.workspace');
     if (App.curView && App.curView.unmount) App.curView.unmount(App);
     let id = App.view;
-    if (!App.hasSession() && !['settings', 'plugin', 'styles'].includes(id)) id = 'home';
+    if (!App.hasSession() && !['settings', 'plugin', 'styles', 'album'].includes(id)) id = 'home';
     const v = MM.views[id] || MM.views.home;
     App.curView = v;
     ws.innerHTML = `<div class="view ${v.flush ? 'flush' : ''}">${v.render(App)}</div>`;
@@ -113,7 +119,7 @@
   // ---------- dock ----------
   App.renderDock = function () {
     const dk = UI.$('.dock');
-    if (!App.hasSession() || App.view === 'plugin' || App.view === 'styles') { dk.style.display = 'none'; return; }
+    if (!App.hasSession() || App.view === 'plugin' || App.view === 'styles' || App.view === 'album') { dk.style.display = 'none'; return; }
     dk.style.display = '';
     dk.innerHTML = `
       <div class="tp">
@@ -240,6 +246,7 @@
   App.setMonitor = function (m) {
     if (m === 'master' && !App.ready()) return;
     if (m === 'ref' && !App.state.refBuffer) return;
+    if (m === 'codec' && !App.state.codecBuf) return;
     App.engine.setMonitor(m); App.renderTop();
     if (App.curView && App.curView.onMonitor) App.curView.onMonitor(App);
   };
@@ -312,6 +319,8 @@
     const keepSettings = App.state.settings;
     App.state = MM.newState();
     App.state.settings = keepSettings;
+    if (MM.stemCache) MM.stemCache.clear(); // a cache por stem pertence à sessão anterior
+    MM.STEM_CACHE_OFF = keepSettings && keepSettings.stemCache === 'off';
     MM.history.undo.length = 0; MM.history.redo.length = 0;
     App.chat = []; App.selected = null;
   };
@@ -365,6 +374,32 @@
     const rec = await MM.getProject(id);
     if (!rec) return;
     if (rec.demo) { await App.loadDemo(); return; }
+    await App.loadRecord(rec);
+  };
+  /** Abre um ficheiro .mixmind (projeto completo exportado). */
+  App.openProjectFile = async function (file) {
+    await App.ensureAudio();
+    try {
+      UI.toast('A abrir o projeto…', 'ok', 1500);
+      const rec = await MM.project.read(new Uint8Array(await file.arrayBuffer()));
+      await App.loadRecord(rec);
+      await MM.saveProject(App.state);
+      App.recent = await MM.listProjects();
+      UI.toast(`Projeto “${UI.esc(rec.name)}” aberto com ${rec.versions.length} ${rec.versions.length === 1 ? 'versão' : 'versões'}.`, 'ok');
+    } catch (e) { console.error(e); UI.toast('Não foi possível abrir o projeto: ' + UI.esc(e.message), 'err', 7000); }
+  };
+  App.exportProjectFile = async function () {
+    const st = App.state;
+    if (!App.hasSession()) return;
+    try {
+      UI.toast('A preparar o projeto completo…', 'ok', 1800);
+      const zip = await MM.project.export(st);
+      const name = (st.project.name || 'Projeto').replace(/[^\p{L}\p{N}]+/gu, '_').replace(/_+$/, '') + '.mixmind';
+      MM.exporter.download(zip, name, 'application/zip');
+      UI.toast(`Projeto exportado (${UI.bytes(zip.length)}): áudio original, decisões, ${st.versions.length} versões e automação.`, 'ok', 5000);
+    } catch (e) { console.error(e); UI.toast('Erro ao exportar o projeto: ' + UI.esc(e.message), 'err'); }
+  };
+  App.loadRecord = async function (rec) {
     App.resetSession();
     const st = App.state;
     App.busy = true; st.stage = 'analyzing'; App.view = 'import';
@@ -375,6 +410,8 @@
       st.sampleRate = App.engine.sampleRate;
       if (st.mode === 'master' && rec.premasterRaw) {
         st.premaster = await App.engine.ctx.decodeAudioData(rec.premasterRaw.slice(0)); st.premasterRaw = rec.premasterRaw;
+        if (rec.snap) MM.restore(st, rec.snap);
+        st.versions = (rec.versions || []).map((v) => Object.assign({}, v, { masterBuf: null, premasterBuf: null }));
         st.stage = 'review'; App.engine.rebuild(st); App.busy = false; App.view = 'plugin'; await App.runAI({ keepMix: true }); return;
       }
       for (let i = 0; i < rec.stems.length; i++) {
@@ -388,13 +425,20 @@
         App.step('import', (i + 1) / rec.stems.length, `${i + 1} / ${rec.stems.length}`);
       }
       MM.restore(st, rec.snap);
+      // versões guardadas (sem áudio: ficam a pedir render ao carregar)
+      st.versions = (rec.versions || []).map((v) => Object.assign({}, v, { masterBuf: null, premasterBuf: null }));
+      st.currentVersion = rec.currentVersion || null; st.currentVersionName = rec.currentVersionName || null;
+      if (rec.album) st.album = rec.album; if (rec.meta) st.meta = rec.meta;
       for (const r of rec.refs || []) if (r.raw) { const b = await App.engine.ctx.decodeAudioData(r.raw.slice(0)); const chs = [b.getChannelData(0).slice(), (b.numberOfChannels > 1 ? b.getChannelData(1) : b.getChannelData(0)).slice()]; await App.addReference(r.name, chs, r.raw, true, r.id); }
       st.stage = 'review';
       App.engine.rebuild(st);
       App.selected = (st.stems.find((s) => s.role === 'Lead Vocal') || st.stems[0]).id;
       App.busy = false; App.view = 'mixer';
       App.render();
-      if (st.stems.some((s) => s.ai)) await App.runAI({ keepMix: true, orig: true });
+      if (st.stems.some((s) => s.ai)) {
+        await App.runAI({ keepMix: true, orig: true, noVersion: st.versions.length > 0 });
+        const cv = st.versions.find((x) => x.id === st.currentVersion); if (cv) { cv.masterBuf = st.masterBuf; cv.premasterBuf = st.premasterBuf; }
+      }
     } catch (e) { console.error(e); UI.toast('Erro ao abrir o projeto: ' + e.message, 'err'); App.busy = false; App.resetSession(); App.render(); }
   };
 
@@ -423,7 +467,7 @@
     const st = App.state, ref = st.refs.find((r) => r.id === st.activeRef);
     App.engine.setLoudness({
       orig: st.metrics.orig ? st.metrics.orig.lufs : -60, mix: st.metrics.mix ? st.metrics.mix.lufs : -60,
-      master: st.metrics.master ? st.metrics.master.lufs : -60, ref: ref ? ref.metrics.lufs : -60,
+      master: st.metrics.master ? st.metrics.master.lufs : -60, ref: ref ? ref.metrics.lufs : -60, codec: st.codecLufs || -60,
     });
   };
 
@@ -450,7 +494,7 @@
       const m = st.metrics.master;
       UI.toast(`Master pronto: ${UI.fmtNum(m.lufs)} LUFS · ${UI.fmtNum(m.tp)} dBTP · score ${st.score.overall}. Alterna A/B com loudness match.`, 'ok', 5000);
       if (App.view === 'import' || App.view === 'home') App.view = st.mode === 'master' ? 'plugin' : 'mixer';
-      if (st.mode !== 'master') App.engine.setMonitor('master');
+      if (st.mode !== 'master' || App.engine.monitor === 'codec') App.engine.setMonitor('master');
       MM.saveProject(st);
     } catch (e) {
       console.error(e); UI.toast('Erro no processamento: ' + e.message, 'err', 8000);
@@ -496,7 +540,7 @@
     if (o.bus) g.applyBus();
     if (o.fx) g.applyFx();
     if (o.master) g.applyMaster();
-    if (o.auto || o.reschedule) App.engine.reschedule();
+    if (o.auto || o.reschedule || g._needResched) { g._needResched = false; App.engine.reschedule(); }
   };
   App.saveSoon = UI.debounce(() => MM.saveProject(App.state), 2500);
   App.undo = function () {
@@ -669,18 +713,21 @@
       const d = UI.$('.drop'); if (d) d.classList.remove('over');
       if (e.target.closest && e.target.closest('[data-refdrop]')) return; // tratado pela vista
       if (App.view === 'styles') { UI.toast('Larga os ficheiros numa das caixas: músicas finais ou stems pós-fader.', 'warn'); return; }
+      if (App.view === 'album') { const fs = await App.filesFromDrop(e.dataTransfer); MM.views.album.addFiles(App, fs); return; }
       const files = await App.filesFromDrop(e.dataTransfer);
+      const proj = files.find((f) => /\.mixmind$/i.test(f.name));
+      if (proj) { App.openProjectFile(proj); return; }
       if (App.view === 'plugin' && files.length === 1) App.loadMasterFile(files[0]);
       else App.importFiles(files);
     });
-    window.addEventListener('beforeunload', () => { if (App.hasSession()) MM.saveProject(App.state); });
+    window.addEventListener('beforeunload', () => { if (App.hasSession()) MM.saveProject(App.state); MM.project.markClosed(); });
   };
   /** Suporta arrastar pastas inteiras. */
   App.filesFromDrop = async function (dt) {
     const out = [];
     const items = dt.items ? Array.from(dt.items) : [];
     const walk = (entry) => new Promise((res) => {
-      if (entry.isFile) entry.file((f) => { out.push(f); res(); }, () => res());
+      if (entry.isFile) entry.file((f) => { try { f.relPath = entry.fullPath.replace(/^\//, ''); } catch (e) { /* */ } out.push(f); res(); }, () => res());
       else if (entry.isDirectory) { const r = entry.createReader(); const all = []; const read = () => r.readEntries(async (ents) => { if (!ents.length) { for (const en of all) await walk(en); res(); } else { all.push(...ents); read(); } }, () => res()); read(); }
       else res();
     });
@@ -713,7 +760,8 @@
       ['Refazer', 'redo', App.redo, App.hasSession(), 'Ctrl+Shift+Z'],
       ['Adicionar stems…', 'plus', () => App.pickFiles(), true],
       ['Abrir sessão de demonstração', 'music', App.loadDemo, true],
-      ['Masterizar uma mix stereo (MixMind Master)', 'plug', () => App.go('plugin'), true],
+      ['Masterizar uma mix stereo (MIXMIND Master)', 'plug', () => App.go('plugin'), true],
+      ['Guardar projeto completo (.mixmind)', 'download', () => App.exportProjectFile(), App.hasSession()],
       ...NAV.map(([k, l, ic]) => ['Ir para ' + l, ic, () => App.go(k), App.hasSession()]),
       ['Estilos · treinar com músicas', 'brain', () => App.go('styles'), true],
       ['Definições', 'gear', () => App.go('settings'), true],

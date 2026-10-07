@@ -1,0 +1,17 @@
+{
+  "name": "mixmind-by-piradex",
+  "private": true,
+  "description": "MIXMIND by Piradex — testes automáticos (a app em si não precisa de build nem de dependências)",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/dsp.test.mjs && node tests/e2e.test.mjs && node tests/cloud.test.mjs",
+    "test:dsp": "node tests/dsp.test.mjs",
+    "test:e2e": "node tests/e2e.test.mjs",
+    "test:cloud": "node tests/cloud.test.mjs",
+    "bench": "node tests/bench.mjs",
+    "build:wasm": "sh wasm/build.sh"
+  },
+  "devDependencies": {
+    "playwright": "1.56.0"
+  }
+}

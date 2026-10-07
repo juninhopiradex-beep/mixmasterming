@@ -1,4 +1,4 @@
-/* MixMind — vista Mixer + assistente + editor de módulos */
+/* MIXMIND — vista Mixer + assistente + editor de módulos */
 (function () {
   const MM = window.MM, D = MM.dsp, UI = MM.ui;
   const V = (MM.views = MM.views || {});
@@ -22,7 +22,7 @@
     const send = p.sendRev > -59 ? `${REVAB[p.revType] || 'REV'} ${Math.round(p.sendRev)}` : p.sendDly > -59 ? `DLY ${Math.round(p.sendDly)}` : '';
     const autoOn = (app.state.automation || []).some((l) => l.target.id === s.id && l.enabled.ai);
     return `<div class="strip ${sel ? 'sel' : ''} ${s.mute ? 'muted-s' : ''}" style="--c:${c}" data-strip="${s.id}">
-      <div class="name" title="${UI.esc(s.label)}">${UI.esc(s.short || s.label)}${s.locked ? UI.icon('lock') : ''}</div>
+      <div class="name" title="${UI.esc(s.label)}">${UI.esc(s.short || s.label)}${s.p.polarity ? '<span class="phbadge" title="Polaridade invertida (vista Análise → Fase)">Ø</span>' : ''}${+s.p.align > 0 ? `<span class="phbadge" title="Atrasado ${UI.fmtNum(+s.p.align, 2)} ms para alinhar a fase">+${UI.fmtNum(+s.p.align, 1)}ms</span>` : ''}${s.locked ? UI.icon('lock') : ''}</div>
       <div class="meta">${Math.round(s.conf * 100)}% · ${s.hier}</div>
       <div class="mods">${mods.map(([k, l]) => `<div class="mod ${isManual(s, k) ? 'man' : 'ai'}" data-mod="${k}" data-sid="${s.id}">${l}</div>`).join('') || '<div class="dim tiny" style="text-align:center;margin-top:30px">sem processamento</div>'}</div>
       <div class="panrow"><div class="panknob" data-pan="${s.id}"><div class="tr"></div><div class="ctr"></div><div class="th" style="left:${((p.pan + 1) / 2) * 100}%"></div></div><div class="panlbl">${MM.panLabel(p.pan)}</div></div>

@@ -1,4 +1,4 @@
-/* MixMind — processadores AudioWorklet (carregados via Blob URL, funcionam também em file://)
+/* MIXMIND — processadores AudioWorklet (carregados via Blob URL, funcionam também em file://)
  *  mm-comp     compressor feed-forward com knee, mix paralelo e relatório de GR
  *  mm-limiter  limiter com look-ahead, deteção de true peak (Hermite 4x) e ceiling
  *  mm-trans    transient shaper (attack/sustain)
@@ -247,6 +247,63 @@ class DynEq extends AudioWorkletProcessor {
   }
 }
 registerProcessor('mm-dyneq', DynEq);
+
+// EQ dinâmico com sidechain externo (anti-masking em tempo real): entrada 0 = stem a corrigir, entrada 1 = stem protagonista.
+// Deteta o nível do protagonista na banda (passa-banda + envolvente) e corta a mesma banda no stem, amostra a amostra
+// (coeficientes atualizados a cada 16 amostras). Lei de corte: 0 dB abaixo de (ref − below) e corte máximo 'range' dB acima.
+class ScDyn extends AudioWorkletProcessor {
+  constructor(o) {
+    super();
+    this.quiet = !!(o && o.processorOptions && o.processorOptions.quiet);
+    this.p = Object.assign({ freq: 1000, q: 1.4, cut: 0, ref: -30, below: 22, range: 10, atk: 0.01, rel: 0.15, bypass: false }, initOf(o));
+    this.port.onmessage = (e) => { Object.assign(this.p, e.data); this.prep(); };
+    this.env = 0; this.g = 0; this.dz = new Float64Array(4); this.z = [new Float64Array(4), new Float64Array(4)]; this.count = 0; this.grMax = 0;
+    this.prep();
+  }
+  prep() {
+    const p = this.p, w0 = 2 * Math.PI * p.freq / sampleRate, al = Math.sin(w0) / (2 * (p.q || 1.4)), cw = Math.cos(w0), a0 = 1 + al;
+    this.det = [al / a0, 0, -al / a0, -2 * cw / a0, (1 - al) / a0];
+    this.w0 = w0; this.cw = cw; this.sw = Math.sin(w0);
+    this.ka = Math.exp(-1 / (0.005 * sampleRate)); this.kr = Math.exp(-1 / (0.08 * sampleRate));
+    this.ga = Math.exp(-16 / (p.atk * sampleRate)); this.gr = Math.exp(-16 / (p.rel * sampleRate));
+  }
+  coefs(gdb) {
+    const A = Math.pow(10, gdb / 40), al = this.sw / (2 * (this.p.q || 1.4)), a0 = 1 + al / A;
+    return [(1 + al * A) / a0, -2 * this.cw / a0, (1 - al * A) / a0, -2 * this.cw / a0, (1 - al / A) / a0];
+  }
+  process(inputs, outputs) {
+    const inp = inputs[0], sc = inputs[1], out = outputs[0], p = this.p;
+    if (!inp || !inp.length) { for (const o of out) o.fill(0); return true; }
+    const n = inp[0].length, d = this.det, dz = this.dz;
+    const on = !p.bypass && p.cut > 0 && sc && sc.length;
+    let k = this.coefs(-this.g);
+    for (let i = 0; i < n; i++) {
+      if (on) {
+        const x = sc.length > 1 ? (sc[0][i] + sc[1][i]) * 0.5 : sc[0][i];
+        const y = d[0] * x + d[1] * dz[0] + d[2] * dz[1] - d[3] * dz[2] - d[4] * dz[3];
+        dz[1] = dz[0]; dz[0] = x; dz[3] = dz[2]; dz[2] = y;
+        const a = y * y;
+        this.env = a > this.env ? this.ka * this.env + (1 - this.ka) * a : this.kr * this.env + (1 - this.kr) * a;
+      }
+      if ((i & 15) === 0) {
+        let want = 0;
+        if (on) { const lv = 10 * Math.log10(this.env + 1e-14); want = p.cut * Math.max(0, Math.min(1, (lv - (p.ref - p.below)) / p.range)); }
+        this.g = want > this.g ? this.ga * this.g + (1 - this.ga) * want : this.gr * this.g + (1 - this.gr) * want;
+        if (this.g > this.grMax) this.grMax = this.g;
+        k = this.coefs(-this.g);
+      }
+      for (let c = 0; c < out.length; c++) {
+        const src = inp[Math.min(c, inp.length - 1)], zz = this.z[Math.min(c, 1)];
+        const xx = src[i];
+        const yy = k[0] * xx + k[1] * zz[0] + k[2] * zz[1] - k[3] * zz[2] - k[4] * zz[3];
+        zz[1] = zz[0]; zz[0] = xx; zz[3] = zz[2]; zz[2] = yy; out[c][i] = yy;
+      }
+    }
+    if (++this.count >= 32) { if (!this.quiet) this.port.postMessage({ gr: this.grMax }); this.grMax = 0; this.count = 0; }
+    return true;
+  }
+}
+registerProcessor('mm-scdyn', ScDyn);
 
 // Saturação com oversampling 2× (FIR meia-banda de fase linear, 47 taps) e caminho limpo ALINHADO.
 // Latência fixa e conhecida: 23 amostras (dry e wet chegam juntos → sem filtro em pente).

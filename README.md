@@ -1,10 +1,10 @@
-# MixMind — AI Mixing & Mastering Environment
+# MIXMIND by Piradex — AI Mixing & Mastering Environment
 
 **AI proposes. Engineer decides.**
 
-MixMind é um ambiente de mistura e masterização inteligente baseado em stems, que corre **inteiramente no browser**. Importa os teus stems, a IA identifica cada instrumento (pelo nome *e* pelo áudio), percebe a estrutura da música, propõe uma direção sonora e executa a mistura e o master — com cada decisão explicada, editável e comparável com loudness match.
+**MIXMIND by Piradex** é um ambiente de mistura e masterização inteligente baseado em stems, que corre **inteiramente no browser**. Importa os teus stems, a IA identifica cada instrumento (pelo nome *e* pelo áudio), percebe a estrutura da música, propõe uma direção sonora e executa a mistura e o master — com cada decisão explicada, editável e comparável com loudness match.
 
-O áudio **nunca sai do teu computador**: análise, processamento, render e export acontecem localmente (Web Audio + AudioWorklets + DSP em JavaScript).
+O áudio **nunca sai do teu computador**: análise, processamento, render e export acontecem localmente (Web Audio + AudioWorklets + DSP em JavaScript e WebAssembly). O único envio é opcional e explícito: o portal de clientes (ver “Backend para clientes”).
 
 ---
 
@@ -18,15 +18,22 @@ O áudio **nunca sai do teu computador**: análise, processamento, render e expo
 | **Direção da mistura** | 9 macros (Warm↔Bright, Soft↔Aggressive, Vintage↔Modern, Dry↔Spacious, Narrow↔Wide, Natural↔Polished, Dynamic↔Loud, Smooth↔Punchy, Clean↔Saturated) com a proposta da IA marcada, presets por género e 10 presets estéticos. |
 | **Mistura automática** | Gain staging (−20 LUFS ativos, sem clipping), balanço por fader segundo o género e a hierarquia (Primary/Secondary/Background), panorâmica, HPF, EQ corretiva (lama, boxiness, nasal, aspereza, ressonâncias) e criativa, compressão por instrumento (incl. série na voz), transient shaper, saturação contextual (nunca em todos os canais), de-esser dinâmico, reverbs (plate/room/hall) e delay sincronizado com ducking, mix bus com glue e compressão paralela da bateria. |
 | **Anti-masking** | Análise contínua de conflitos de frequência entre stems (por bloco de ~100 ms e por banda de terço de oitava). Corrige com **EQ dinâmico** que só atua quando o elemento protagonista toca, e **sidechain multibanda** kick → baixo (<120 Hz). |
-| **Automação** | Vocal rider frase a frase (distância alvo vs instrumental, respirações), send de reverb por secção, filtro do pad, delay throws nos adlibs, largura do master por secção. Edição manual por desenho que **prevalece sobre a IA**. |
-| **Master** | Cadeia adaptativa e reordenável: EQ tonal, EQ dinâmico, multibanda (crossovers Linkwitz-Riley), glue, saturação, M/S com graves em mono, soft clipper e limiter true-peak com look-ahead. Alvo LUFS iterativo (−14 a −7 ou custom) com correção automática de true peak. 10 estilos (Transparent, Warm, Punchy, Wide, Aggressive, Analog, Modern, Streaming, Club, Radio). |
+| **Automação** | Vocal rider frase a frase, send de reverb por secção, filtro do pad, delay throws, largura do master (escritos pela IA). Ferramentas de edição: **lápis, linha, formas sincronizadas ao BPM** (seno, triângulo, quadrada, rampas, aleatória) e **borracha** (Alt = apaga também a IA no troço); grelha livre/batida/compasso. Lanes novas por stem: **volume, pan, envio de reverb, envio de delay, passa-baixo, passa-alta, ganho de uma banda de EQ (existente ou nova) e threshold do compressor**; efeitos: **tamanho do reverb** (crossfade entre resposta curta, normal e longa) e **feedback do delay**; no master: **largura e volume/fade**. **Automação aprendida por estilo:** o treino mede como o refrão abre face ao verso (loudness, largura, agudos, voz vs instrumental e — com stems pós-fader — cada instrumento) e a IA escreve essa automação nas sessões desse estilo, descontando o que o arranjo dos teus stems já faz. A edição manual prevalece sobre a IA. |
+| **Arranjo** | Pistas por stem com zoom (Ctrl/⌘ + roda, Shift + roda para deslocar). Estrutura editável: arrastar fronteiras (encaixa no compasso; Shift = livre), renomear (duplo clique), dividir no cursor, juntar, remover, repor a deteção da IA — a automação por secção acompanha. **Mute por secção** (botão direito numa pista ou chips “Calar nesta secção”), respeitado na escuta, no master e nos exports. |
+| **Análise** | Mapa de frequências **Antes / Depois / Mudança tonal**, por secção — o “Depois” é medido num render dos stems processados (EQ, dinâmica, saturação, fader, automação, mutes). Masking no tempo (por secção, antes → depois), botão **Ouvir o conflito** (solo dos dois + loop), A/B com/sem correção e correção editável (corte, frequência, Q). Tonalidade do master vs perfil do estilo treinado e vs referência. **Fase entre stems** (kick × baixo, camadas, pares L/R) com inversão de polaridade e alinhamento ao sub-milissegundo. Compatibilidade mono por stem. Profundidade percebida (reverb + pre-delay, nível, brilho, compressão). Histórico do score por versão. |
+| **Master** | **Estilo musical** (Kizomba, Semba, Kuduro, Afro House, House, Ghetto Zouk, Tarraxinha, Zouk…) com o perfil aprendido na aba Estilos — curva tonal, loudness, densidade, largura, graves mono — mais o **caráter** (Transparent, Warm, Punchy…). Cadeia adaptativa e reordenável: EQ tonal, EQ dinâmico, multibanda (crossovers Linkwitz-Riley), glue, saturação, M/S com graves em mono, soft clipper e limiter true-peak com look-ahead. Alvo LUFS iterativo (−14 a −7 ou custom) com correção automática de true peak. 10 estilos (Transparent, Warm, Punchy, Wide, Aggressive, Analog, Modern, Streaming, Club, Radio). |
 | **Referências** | Até 3 faixas. Diferença por banda após loudness match, LUFS, LRA, largura, correlação. Controlo de influência 0–100 % e aplicação em Mix e/ou Master. |
 | **Comparar** | Original / Mix / Master / Referência com **loudness match**, sincronizados, troca instantânea. Espectros sobrepostos, “o que mudou”, 4 alternativas da IA (Natural, Modern, Aggressive, Wide) para alternar sem renderizar. |
-| **Medição** | LUFS-I/S/M (BS.1770-4), true peak (sobreamostragem 4×), LRA, PLR, crest, correlação, vectorscope, espectro ao vivo, Mix Quality Score com recomendações acionáveis. |
-| **Export** | WAV 16 (dither TPDF) / 24 / 32-bit float, AIFF, FLAC (codificador próprio, lossless verificado), MP3 320; 44,1 / 48 / 88,2 / 96 kHz. Master, premaster, stems processados, instrumental, acapella, TV mix, performance mix, versões dedicadas por plataforma (Spotify, Apple Music, YouTube, Tidal, Club, Rádio), relatório de QC e sessão JSON — num ZIP. |
+| **Medição** | LUFS-I/S/M (BS.1770-4), true peak exato (sinc Kaiser longo a 32× nos picos candidatos — o 4× do BS.1770 subestima até ~0,7 dB a 44,1 kHz), LRA, PLR, crest, correlação, vectorscope, espectro ao vivo. **Mix Quality Score ancorado em referências externas** (ver abaixo). |
+| **Export** | WAV 16 (dither TPDF) / 24 / 32-bit float, AIFF, FLAC (codificador próprio, lossless verificado), MP3 320; 44,1 / 48 / 88,2 / 96 kHz. Master, premaster, stems processados, instrumental, acapella, TV mix, performance mix, versões dedicadas por plataforma (Spotify, Apple Music, YouTube, Tidal, Club, Rádio), relatório de QC e sessão JSON — num ZIP. **Metadados** em todos os formatos: título, artista, álbum, ano, género, ISRC (validado), UPC/EAN (validado), compositor, copyright — BWF `bext` com loudness R128, `LIST/INFO`, `aXML` com ISRC (EBU Tech 3352), ID3v2.3 no MP3, Vorbis comments no FLAC. |
+| **Codecs** | Pré-escuta do master **depois** do codec (MP3 320/128, AAC e Opus quando o browser os suporta): true peak e overs pós-codec, LUFS, perda de agudos, e um botão que aplica o **ceiling seguro** calculado. |
+| **Álbum · DDP** | Alinhamento de várias masters: ordem, pausas, fades, ISRC por faixa, UPC, **igualar loudness** do álbum respeitando o ceiling, escuta com as pausas. Export: masters em ZIP, **WAV + CUE** e **DDP 2.0** (DDPID, DDPMS, PQDESCR, IMAGE.DAT, CHECKSUM.MD5) com verificação independente do que foi escrito. |
+| **Projeto** | **Versões guardadas** (decisões, métricas e score de cada uma), recuperação da sessão depois de um crash, e **projeto completo num ficheiro `.mixmind`** (ZIP com o áudio original + todas as decisões, versões, automação e secções) para cópia de segurança ou para levar para outro computador. |
 | **Controlo humano** | Tudo editável: override, bloquear stem, bypass, reset para o valor da IA, edição manual. Undo/redo, versões, guarda contra over-processing (Conservador/Normal/Livre). |
-| **MixMind Master** | Modo “plugin” para masterizar uma mix stereo com 4 macros (Punch, Warmth, Width, Loudness). |
+| **MIXMIND Master** | Modo “plugin” para masterizar uma mix stereo com 4 macros (Punch, Warmth, Width, Loudness). |
 | **Estilos · treino** | Biblioteca por estilo (Kizomba, Semba, Kuduro, Afro House, House, Ghetto Zouk, Tarraxinha, Zouk, Amapiano… ou estilos novos teus). Carregas masters finais e/ou stems pós-fader; ficam **pendentes até aprovares**; ao aprovar, a IA mede e apaga o áudio. Cada estilo ganha um perfil aprendido (curva tonal, loudness, PLR, LRA, largura, graves mono, BPM, punch, balanço por instrumento) e um classificador reconhece o estilo nas sessões novas (com precisão por validação cruzada). Quando o estilo é escolhido, o perfil comanda a mistura e o master. Export/import da biblioteca em JSON. |
+| **Modelo do engenheiro** | Treina com o **teu arquivo** (pastas `raw/` e `mix/` por música): aprende o teu balanço, a tua forma de EQ e quanto comprimes cada tipo de stem. Validado deixando uma sessão de fora: só influencia a IA onde bate as regras de base. Também aprende com as sessões que acabas no MIXMIND. |
+| **Clientes** | Portal público (`portal.html`) onde clientes enviam masters ou stems com consentimento de direitos; tu aprovas na aba Estilos; ao aprovar, a análise corre no teu browser, só as medidas vão para a biblioteca partilhada e o áudio é apagado do servidor. Backend opcional em Supabase (gratuito). |
 | **Assistente** | Pedidos em linguagem natural (“Quero mais punch no kick”, “Quero a voz mais próxima”, “Reduz a agressividade da master”, “Aproxima esta mix da referência”) → proposta com confiança → Aplicar / Rejeitar / Ver porquê. |
 
 ### Treinar estilos (aba Estilos)
@@ -39,6 +46,49 @@ O áudio **nunca sai do teu computador**: análise, processamento, render e expo
 Também podes juntar o master atual de uma sessão à biblioteca (“Adicionar o master atual”).
 
 Inclui uma **sessão de demonstração** (Kizomba, 94 BPM, F♯ menor, 15 stems sintetizados no browser, com nomes errados de propósito) para experimentar sem ficheiros.
+
+---
+
+### Mix Quality Score ancorado (v1.6)
+O score já não compara a mistura com as próprias decisões da IA. Cada critério usa a âncora externa mais forte disponível e mostra-a na Análise:
+1. **estilo treinado** — balanço por papel, curva tonal ± desvio, PLR, largura e graves mono medidos nas tuas músicas aprovadas;
+2. **faixa de referência** — curva tonal, PLR e largura;
+3. **norma objetiva** — alvo de entrega (LUFS/ceiling), correlação e mono, regras de balanço por papel.
+O masking usa a **medição real depois do processamento** quando está atualizada (senão a previsão da simulação, e o score diz qual). Há um critério novo, **Tonal Balance**, e recomendações para aproximar o balanço da âncora.
+
+### Modelo do engenheiro (o teu arquivo)
+1. Organiza as músicas assim: `Arquivo/<música>/raw/…` (stems brutos) e `Arquivo/<música>/mix/…` (os mesmos stems já misturados, bounce pós-fader). Também servem os nomes `bruto`, `original`, `multitrack` e `bounce`, `pós-fader`, `final`, `prints`.
+2. Estilos → **Treinar com o meu arquivo** → escolhe a pasta `Arquivo`. Cada stem bruto é emparelhado com o misturado pelo nome (ex.: `03_Bass DI.wav` ↔ `Bass DI_mix.wav`); os que não emparelham aparecem em “Ver sessões”.
+3. Com 3+ sessões o modelo ativa. O painel mostra o erro em sessões que o modelo **não viu** face à regra de base — e o peso na IA depende disso (zero se não bater a regra).
+4. **Esta sessão**: depois de medires a mistura (Análise → Depois), junta a sessão atual ao modelo — aprende com o que fazes no próprio MIXMIND.
+Exporta/importa o modelo em JSON (só medidas, sem áudio).
+
+### Backend para clientes (Supabase) — opcional
+Sem isto, tudo continua 100 % local. Com isto: portal de envio para clientes, moderação na aba Estilos e uma biblioteca de estilos partilhada por todos os visitantes do site.
+1. Cria um projeto grátis em [supabase.com](https://supabase.com).
+2. **SQL Editor** → cola e corre `supabase/schema.sql` (tabelas, regras RLS e o bucket privado `submissions`).
+3. **Authentication → Users → Add user**: cria o teu utilizador admin (email + palavra-passe). No fim do SQL, troca `o-teu-email@exemplo.com` pelo teu email e corre essa linha.
+4. **Project Settings → API**: copia a *Project URL* e a chave *anon public* para `config.js` e faz push. (Para experimentar só no teu browser: Estilos → Clientes → Configurar.)
+5. Partilha `https://<utilizador>.github.io/<repo>/portal.html` com os clientes. Os envios aparecem em Estilos → **Rever envios pendentes** (depois de “Entrar como admin”).
+
+Segurança: a chave *anon* é pública por natureza. As regras RLS só deixam os clientes **criar** envios pendentes e **enviar** áudio para `incoming/`; não conseguem ler nada. Só o email da tabela `admins` lê, aprova, apaga e publica. Ao aprovar, o áudio é apagado do servidor e a biblioteca partilhada guarda só medidas. Recomendado: em Authentication → Settings, desliga o registo público de utilizadores e ativa CAPTCHA se o portal começar a receber spam.
+
+### Velocidade (v1.6)
+- **WebAssembly** (`wasm/mm_dsp.c`, < 4 KB, embutido em `js/core/wasm-bin.js` — sem build para o utilizador): FFT real das análises e medições ~3× mais rápida, true peak ~2,9×. O loudness ficou em JavaScript, que é mais rápido para esse filtro recursivo (medido). Recompilar: `npm run build:wasm` (precisa de clang com alvo wasm32).
+- **Cache por stem**: o primeiro render guarda a saída dos stems pesados (até ao fader); nos renders seguintes os stems inalterados não voltam a ser processados — mexer num stem só re-renderiza esse. A medição “Depois” também só mede os stems que mudaram. Orçamento de memória automático (Definições → Motor de IA, com botão para limpar).
+
+### Testes automáticos
+```bash
+npm install              # só para os testes (Playwright); a app não precisa
+npm run test:dsp         # DSP, formatos, entrega/DDP, wasm, modelo do engenheiro (Node, sem browser)
+npm run test:e2e         # sessão demo completa no Chromium
+npm run test:cloud       # portal → aprovação → biblioteca, contra um Supabase falso (tests/mock-supabase.py)
+npm run bench            # JavaScript vs WebAssembly
+```
+Correm a cada push no GitHub Actions (`.github/workflows/tests.yml`).
+
+### Entrega a clientes: DDP
+O DDP é escrito segundo a estrutura DDP 2.0 e verificado de forma independente (as estruturas são relidas e o áudio comparado com o WAV+CUE). Mesmo assim, **antes de enviar para fábrica, abre o DDP num leitor de DDP** (ex.: HOFA DDP Player, Sonoris DDP Player) e confirma faixas, pausas, ISRC e UPC.
 
 ---
 
@@ -87,9 +137,15 @@ python3 -m http.server 8080
 ## Estrutura
 
 ```
-index.html
+index.html                   a app
+portal.html                  portal público de envio para clientes (precisa do backend)
+config.js                    chaves do Supabase (opcional; vazio = tudo local)
 css/styles.css               design system
-js/core/dsp.js               FFT, biquads RBJ, ponderação K, LUFS/LRA, true peak, correlação
+js/core/dsp.js               FFT, biquads RBJ e "matched", FIR de fase linear, ponderação K, LUFS/LRA, true peak, correlação
+js/core/wasm.js · wasm-bin.js  ponte e binário WebAssembly (fonte: wasm/mm_dsp.c)
+js/core/project.js           ficheiro de projeto .mixmind, recuperação de sessão
+js/core/sections.js          estrutura editável e mutes por secção
+js/core/cloud.js             backend para clientes (REST do Supabase)
 js/core/worklets.js          AudioWorklets: compressor, limiter TP, transient shaper, EQ dinâmico, medidor BS.1770
 js/core/session.js           estado, importação, pipeline da IA, undo/redo, versões, IndexedDB
 js/audio/analysis.js         features por stem, classificação, problemas de importação, BPM, tom, estrutura, género
@@ -98,9 +154,18 @@ js/audio/engine.js           grafo de áudio (tempo real e offline idênticos), 
 js/audio/master.js           mastering engine, estilos, alvo LUFS iterativo, referências, plataformas
 js/audio/styles.js           biblioteca de estilos: características, perfis aprendidos, classificador, export/import
 js/audio/export.js           WAV/AIFF/FLAC/MP3, ZIP, QC, relatório
+js/audio/delivery.js         metadados (BWF bext, LIST/INFO, aXML, ID3, Vorbis), ISRC/UPC, pré-escuta de codecs
+js/audio/album.js            modo álbum, CUE, DDP 2.0 e verificação
+js/audio/insight.js          medição "Depois", masking no tempo, fase, tonalidade
+js/audio/stemcache.js        cache por stem dos renders
+js/audio/engineer.js         modelo do engenheiro (o teu arquivo)
+js/vendor/lame.min.js        codificador MP3 lamejs (LGPL — ver js/vendor/LAMEJS-LICENSE.txt)
 js/audio/demo.js             sessão de demonstração sintetizada
-js/ui/…                      interface (vistas: importar, mixer, arranjo, análise, automação, master, comparar, referências, exportar, definições, plugin)
+js/ui/…                      interface (vistas: importar, mixer, arranjo, análise, automação, master, comparar, referências, exportar, definições, plugin, estilos, álbum)
 styles/library.json          biblioteca de estilos publicada com o site (vazia por omissão)
+supabase/schema.sql          tabelas, RLS e bucket do backend de clientes
+wasm/                        fonte C dos núcleos WebAssembly e script de compilação
+tests/                       testes (Node, Chromium e Supabase falso)
 docs/ARQUITETURA.md          proposta técnica completa (30 componentes) e roadmap
 docs/AUDITORIA.md            auditoria de áudio: causas do som "de tubo", correções e medições
 ```
@@ -109,10 +174,12 @@ docs/AUDITORIA.md            auditoria de áudio: causas do som "de tubo", corre
 
 ## Notas honestas sobre esta versão
 
-- **“IA” nesta versão = DSP + regras de engenharia + estatística + aprendizagem por estilo** (perfis medidos e classificador gaussiano treinados com as tuas músicas). Não há redes neuronais profundas. A classificação, as decisões de mistura e o assistente são determinísticos e explicáveis. A arquitetura está preparada para trocar cada decisor por um modelo treinado (ver `docs/ARQUITETURA.md`, secções 4, 5 e 25–28).
-- O **MP3** usa o codificador `lamejs` carregado de um CDN na primeira exportação — precisa de internet nesse momento. WAV, AIFF e FLAC funcionam offline.
+- **“IA” nesta versão = DSP + regras de engenharia + estatística + aprendizagem** (perfis por estilo, classificador gaussiano e o modelo do engenheiro — regressão ridge — treinados com as tuas músicas). Não há redes neuronais profundas. A classificação, as decisões de mistura e o assistente são determinísticos e explicáveis. A arquitetura está preparada para trocar cada decisor por um modelo treinado (ver `docs/ARQUITETURA.md`, secções 4, 5 e 25–28).
+- O **MP3** usa o codificador `lamejs` (LGPL), incluído em `js/vendor/` — funciona offline. A pré-escuta AAC depende do browser e do sistema (o Chromium em Linux não tem codificador AAC; a app só mostra os codecs disponíveis).
 - Sessões muito longas (30+ stems de 6+ minutos) podem esgotar a memória do separador; usa a qualidade de análise “Rápida”.
 - O browser não permite plugins **VST3/AU/AAX**. O motor foi desenhado para ser portado para JUCE (C++) com a mesma arquitetura — ver roadmap.
-- Os projetos e a biblioteca de estilos ficam guardados no IndexedDB **deste browser** (Definições → Privacidade para apagar projetos). Uma página pública onde clientes enviam músicas para aprovação precisa de um servidor — no GitHub Pages, partilha-se o treino via `styles/library.json`.
+- Os projetos, a biblioteca de estilos e o modelo do engenheiro ficam guardados no IndexedDB **deste browser** (Definições → Privacidade para apagar projetos). Para levar um projeto para outro computador usa o ficheiro `.mixmind`. A biblioteca pode ser partilhada pelo backend opcional ou por `styles/library.json`.
+- A cache por stem dá um resultado igual ao render completo a −98 dB (diferenças de arredondamento em vírgula flutuante), inaudível.
+- O modelo do engenheiro só é tão bom quanto o arquivo: precisa de 3+ sessões com nomes de ficheiros emparelháveis, e com poucas sessões o peso dele é baixo — de propósito.
 
-© MixMind · BeatFreak Studio
+© MIXMIND by Piradex · BeatFreak Studio

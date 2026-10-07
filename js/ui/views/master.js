@@ -1,4 +1,4 @@
-/* MixMind — vista Master + componente "Ouvir" + editor de módulos do master */
+/* MIXMIND — vista Master + componente "Ouvir" + editor de módulos do master */
 (function () {
   const MM = window.MM, D = MM.dsp, UI = MM.ui;
   const V = (MM.views = MM.views || {});
@@ -7,7 +7,7 @@
   function modSub(M, k) {
     const c = M.chain[k];
     switch (k) {
-      case 'eq': return [['80 Hz', c.low], ['300 Hz', c.mud], ['3 kHz', c.pres], ['9 kHz', c.air]].filter((x) => Math.abs(x[1]) >= 0.1).map((x) => `${UI.fmtDb(x[1])} dB @ ${x[0]}`).slice(0, 2).join(' · ') + ((c.ref || []).some((g) => Math.abs(g) > 0.05) ? ' · + referência' : '') || 'neutra';
+      case 'eq': return [['80 Hz', c.low], ['300 Hz', c.mud], ['3 kHz', c.pres], ['9 kHz', c.air]].filter((x) => Math.abs(x[1]) >= 0.1).map((x) => `${UI.fmtDb(x[1])} dB @ ${x[0]}`).slice(0, 2).join(' · ') + ((c.ref || []).some((g) => Math.abs(g) > 0.05) ? ' · + referência' : '') + (c.phase === 'linear' ? ' · fase linear' : '') || 'neutra';
       case 'dyn': return `Lama 320 Hz · aspereza 3,2 kHz`;
       case 'mb': return `3 bandas · low-end ${UI.fmtNum(c.bands[0].ratio)}:1`;
       case 'glue': return `${UI.fmtNum(c.ratio)}:1 · ataque ${c.atk} ms · release auto`;
@@ -67,6 +67,95 @@
   }
   const normCurve = (db, freqs) => { const idx = freqs.map((f, i) => (f > 100 && f < 4000 ? i : -1)).filter((i) => i >= 0); const m = D.mean(idx.map((i) => db[i])); return db.map((v) => v - m); };
 
+  // ---------- estilo musical (perfis aprendidos na aba Estilos) ----------
+  const CORE = ['Kizomba', 'Semba', 'Kuduro', 'Afro House', 'House', 'Ghetto Zouk', 'Tarraxinha', 'Zouk', 'Amapiano', 'Afrobeat'];
+  const CHAR = { punchy: 'Punchy', warm: 'Warm', loud: 'Aggressive', wide: 'Wide', transparent: 'Transparent' };
+  V.genreBlock = function (app) {
+    const st = app.state, cur = st.music && st.music.genre;
+    const S = MM.styles, prof = (n) => (S && S.profile ? S.profile(n) : null);
+    const all = Array.from(new Set([].concat(S && S.list ? S.list.map((x) => x.name) : [], Object.keys(MM.GENRES))));
+    const trained = all.filter((n) => prof(n) && prof(n).n >= 1).sort((a, b) => prof(b).n - prof(a).n);
+    const shown = Array.from(new Set(trained.concat(CORE.filter((n) => all.includes(n)), cur ? [cur] : [])));
+    const rest = all.filter((n) => !shown.includes(n)).sort();
+    const p = cur ? prof(cur) : null, G = cur ? MM.GENRES[cur] : null, ps = p && p.stat;
+    const src = st.music && st.music.genreSource === 'treino' ? 'reconhecido pelo treino' : st.music && st.music.genreSource === 'manual' ? 'escolhido por ti' : 'detetado pela análise';
+    const sum = !cur ? '' : p ? `<b>${UI.esc(cur)}</b> · ${src} · perfil treinado com <b>${p.n}</b> ${p.n === 1 ? 'música' : 'músicas'}${p.nMasters !== undefined ? ` (${p.nMasters} masters)` : ''}: ${ps && ps.lufs ? `loudness ${UI.fmtNum(ps.lufs.med)} LUFS · ` : ''}${ps && ps.plr ? `PLR ${UI.fmtNum(ps.plr.med)} dB · ` : ''}${ps && ps.width ? `largura ${Math.round(ps.width.med * 100)} % · ` : ''}curva tonal aprendida. Confiança ${Math.round((p.conf || 0) * 100)} %.`
+      : `<b>${UI.esc(cur)}</b> · ${src} · <span style="color:var(--warn)">sem músicas treinadas</span>: usa os valores de referência do género${G ? ` (${UI.fmtNum(G.target)} LUFS, caráter ${CHAR[G.style] || 'Punchy'})` : ''}. <a class="acc-t" data-view="styles" style="cursor:pointer">Treinar na aba Estilos</a>.`;
+    return `<div class="eyebrow" style="margin-top:22px">Estilo musical · perfil da IA</div>
+      <div class="chips" style="margin-top:10px">${shown.map((n) => { const q = prof(n); return `<button class="chip ${n === cur ? 'on' : ''}" data-genre="${UI.esc(n)}" title="${q ? `Treinado com ${q.n} ${q.n === 1 ? 'música' : 'músicas'}` : 'Sem treino: valores de referência do género'}">${UI.esc(n)}${q ? `<span class="gbadge">${q.n}</span>` : ''}</button>`; }).join('')}
+        ${rest.length ? `<select class="field" id="genreMore" style="width:auto;height:30px"><option value="">Outros…</option>${rest.map((n) => `<option>${UI.esc(n)}</option>`).join('')}</select>` : ''}</div>
+      <div class="small muted" style="margin-top:8px;line-height:1.5">${sum}</div>
+      <div class="small dim" style="margin-top:4px">O estilo define a curva tonal alvo, o loudness, a densidade (glue/clipper), a largura e os graves em mono. O caráter abaixo dá o “sabor”.</div>`;
+  };
+  V.bindGenre = function (app, root) {
+    const st = app.state, M = st.master;
+    const pick = (g) => {
+      if (!g || !st.music) return;
+      app.change('Estilo musical ' + g, () => {
+        st.music.genre = g; st.music.genreSource = 'manual';
+        const G = MM.GENRES[g];
+        delete M.manual.target;
+        if (G) { M.target = G.target; M.targetBase = G.target; if (!M.manual.style && CHAR[G.style]) M.style = CHAR[G.style]; }
+      }, { master: true });
+      UI.toast(`Estilo ${UI.esc(g)}: a re-masterizar com o perfil${MM.styles && MM.styles.profile(g) ? ' aprendido' : ' de referência'}.${st.mode !== 'master' ? ' Para aplicar também à mistura, usa AI Mix &amp; Master.' : ''}`, 'ok', 4500);
+      app.runAI({ keepMix: true });
+    };
+    root.querySelectorAll('[data-genre]').forEach((b) => (b.onclick = () => pick(b.dataset.genre)));
+    const sel = root.querySelector('#genreMore'); if (sel) sel.onchange = () => pick(sel.value);
+  };
+
+  // ---------- pré-escuta de codecs (true peak e loudness depois da codificação) ----------
+  V.codecPanel = function (app) {
+    const st = app.state, C = st.codecTests && st.codecTests.buf === st.masterBuf ? st.codecTests : null, M = st.master;
+    if (!app.ready()) return '';
+    const rows = C ? C.results.map((r, i) => {
+      const bad = r.tp > -1.0, clip = r.overs > 0;
+      return `<div class="codec-row"><div><b>${UI.esc(r.codec.name)}</b><div class="small dim">${UI.esc(r.codec.where)}</div></div><span class="mono ${bad ? 'warn-t' : ''}" title="true peak depois de descodificar">${UI.fmtNum(r.tp)} dBTP</span><span class="mono" title="loudness depois da codificação">${UI.fmtNum(r.lufs)} LUFS</span><span class="mono ${clip ? 'bad-t' : ''}" title="amostras ≥ 0 dBFS no descodificado">${r.overs ? r.overs + ' overs' : '0 overs'}</span><button class="btn sm ${st.codecIdx === i && app.engine.monitor === 'codec' ? 'acc' : ''}" data-codec-play="${i}">${UI.icon('play')}Ouvir</button></div>`;
+    }).join('') : '';
+    const safe = C ? MM.delivery.safeCeiling(C.results, M.ceiling, st.metrics.master.tp) : null;
+    return `<div class="row" style="justify-content:space-between;margin-top:22px"><div class="eyebrow">Pré-escuta de codecs</div>${C ? `<button class="btn sm ghost" data-codec-run>Repetir</button>` : ''}</div>
+      ${C ? `<div style="margin-top:4px">${rows}</div>
+        ${safe !== null ? `<div class="rec" style="border:none"><span class="small">O pior codec chega a <b class="warn-t">${UI.fmtNum(Math.max(...C.results.map((r) => r.tp)))} dBTP</b>. Para ficar ≤ −1 dBTP depois da codificação (requisito Apple Digital Masters / Spotify), usa ceiling <b>${UI.fmtNum(safe)} dBTP</b>.</span><button class="btn sm acc" data-codec-fix="${safe}">Aplicar e re-masterizar</button></div>` : `<div class="small" style="margin-top:8px"><span class="acc-t">●</span> Todos os codecs ficam ≤ −1 dBTP e sem overs: seguro para streaming.</div>`}
+        ${C.unsupported.length ? `<div class="small dim" style="margin-top:6px">Não disponível neste browser: ${C.unsupported.join(', ')} (o AAC precisa do Chrome/Edge em Windows ou macOS).</div>` : ''}
+        <div class="small dim" style="margin-top:6px">“Ouvir” toca o master depois do codec, sincronizado; volta ao master com a tecla 3.</div>`
+      : `<p class="small muted" style="margin:6px 0 10px">Codifica o master em MP3, AAC e Opus como as plataformas fazem, descodifica-o e volta a medir. O true peak sobe quase sempre depois da codificação.</p><button class="btn acc sm" data-codec-run>${UI.icon('activity')}Testar codecs</button><div id="codecProg" class="small muted" style="margin-top:8px"></div>`}`;
+  };
+  V.runCodecs = async function (app) {
+    const st = app.state;
+    if (!st.masterBuf || V._codecBusy) return;
+    V._codecBusy = true;
+    const prog = () => document.getElementById('codecProg');
+    const results = [], unsupported = [];
+    try {
+      await app.ensureAudio();
+      for (const c of MM.delivery.CODECS) {
+        if (!(await MM.delivery.supported(c, st.masterBuf.sampleRate))) { unsupported.push(c.name); continue; }
+        const p = prog(); if (p) p.textContent = `A testar ${c.name}…`;
+        try { results.push(await MM.delivery.roundtrip(st.masterBuf, c.id, app.engine.ctx)); }
+        catch (e) { console.warn(c.id, e); unsupported.push(c.name + ' (erro: ' + e.message + ')'); }
+      }
+      st.codecTests = { buf: st.masterBuf, results, unsupported };
+    } catch (e) { UI.toast('Erro nos codecs: ' + UI.esc(e.message), 'err'); }
+    V._codecBusy = false;
+    const el = document.getElementById('codecPanel'); if (el) { el.innerHTML = V.codecPanel(app); V.bindCodec(app, el); }
+  };
+  V.bindCodec = function (app, el) {
+    const st = app.state;
+    el.querySelectorAll('[data-codec-run]').forEach((b) => (b.onclick = () => { b.disabled = true; V.runCodecs(app); }));
+    el.querySelectorAll('[data-codec-play]').forEach((b) => (b.onclick = async () => {
+      const r = st.codecTests.results[+b.dataset.codecPlay];
+      st.codecBuf = MM.toAudioBuffer(r.chs, r.sr); st.codecLufs = r.lufs; st.codecIdx = +b.dataset.codecPlay;
+      app.updateLM();
+      const was = app.engine.playing, pos = app.engine.position();
+      if (was) app.engine.pause();
+      app.setMonitor('codec');
+      if (was) app.engine.play(pos);
+      UI.toast(`A ouvir ${UI.esc(r.codec.name)} (loudness match ${app.engine.lm ? 'ligado' : 'desligado'}). Tecla 3 volta ao master.`, 'ok');
+      el.innerHTML = V.codecPanel(app); V.bindCodec(app, el);
+    }));
+    el.querySelectorAll('[data-codec-fix]').forEach((b) => (b.onclick = () => { const c = +b.dataset.codecFix; app.change('Ceiling seguro para codecs', () => { st.master.ceiling = c; st.master.ceilAdj = 0; }, { master: true }); app.runAI({ keepMix: true }); }));
+  };
+
   V.master = {
     flush: true,
     render(app) {
@@ -81,8 +170,9 @@
         <div class="pad">
           <div class="eyebrow">Alvo de loudness (LUFS-I)</div>
           <div class="chips" style="margin-top:10px">${targets.map((t) => `<button class="chip mono ${M.target === t ? 'on' : ''}" data-tgt="${t}">${UI.fmtNum(t, 0)}</button>`).join('')}<input class="field mono" id="tgtC" style="width:86px;height:30px" placeholder="Custom" value="${isCustom ? UI.fmtNum(M.target) : ''}"></div>
-          <div class="row" style="justify-content:space-between;margin-top:14px"><span>True peak ceiling</span><select class="field mono" id="ceil" style="width:110px;height:32px">${[-2, -1.5, -1, -0.8, -0.5, -0.3, -0.1].map((c) => `<option value="${c}" ${M.ceiling === c ? 'selected' : ''}>${UI.fmtNum(c)} dBTP</option>`).join('')}</select></div>
-          <div class="eyebrow" style="margin-top:22px">Estilo de master</div>
+          <div class="row" style="justify-content:space-between;margin-top:14px"><span>True peak ceiling</span><select class="field mono" id="ceil" style="width:110px;height:32px">${Array.from(new Set([-2, -1.5, -1, -0.8, -0.5, -0.3, -0.1, M.ceiling])).sort((x, y) => x - y).map((c) => `<option value="${c}" ${M.ceiling === c ? 'selected' : ''}>${UI.fmtNum(c)} dBTP</option>`).join('')}</select></div>
+          ${V.genreBlock(app)}
+          <div class="eyebrow" style="margin-top:22px">Caráter do master</div>
           <div class="chips" style="margin-top:10px">${Object.keys(MM.MASTER_STYLES).map((s) => `<button class="chip ${M.style === s ? 'on' : ''}" data-style="${s}" title="${UI.esc(MM.MASTER_STYLES[s].desc)}">${s}</button>`).join('')}</div>
           <div class="small muted" style="margin-top:8px">${UI.esc((MM.MASTER_STYLES[M.style] || {}).desc || '')}</div>
           <div class="row" style="justify-content:space-between;margin-top:20px"><span>Influência da referência</span><span class="mono" id="riV">${Math.round(st.refInfluence * 100)} %</span></div>
@@ -111,6 +201,7 @@
         <div class="pad">
           <div class="row" style="justify-content:space-between"><div class="eyebrow">Controlo de qualidade</div><span class="${warns ? 'warn-t' : 'ok-t'} small">${qc.length ? (warns ? warns + ' avisos' : 'tudo OK') : ''}</span></div>
           <div class="qc" style="margin-top:6px">${qc.length ? qc.map((q) => `<div class="it ${q.status}"><span class="ic">${UI.icon(q.status === 'ok' ? 'check' : q.status === 'warn' ? 'info' : 'x')}</span><div><b>${UI.esc(q.title)}</b><small>${UI.esc(q.text)}</small></div></div>`).join('') : '<div class="empty-note">O QC corre automaticamente depois do master.</div>'}</div>
+          <div id="codecPanel">${V.codecPanel(app)}</div>
           <div class="eyebrow" style="margin-top:22px">Exportar para</div>
           <div class="plat" style="margin-top:10px">${MM.PLATFORMS.filter((p) => p.id !== 'cd').map((p) => `<button data-plat="${p.id}" class="${p.lufs === M.target && p.tp === M.ceiling ? 'on' : ''}"><b>${p.name}</b><small>${UI.fmtNum(p.lufs, 0)} LUFS · ${UI.fmtNum(p.tp)} dBTP</small></button>`).join('')}<button data-plat="cd"><b>CD</b><small>16-bit · dither</small></button><button data-plat="dual"><b>Streaming dupla</b><small>Master + versão −14</small></button></div>
           <button class="btn primary lg" style="width:100%;margin-top:16px" data-view="export">${UI.icon('download')}Exportar WAV 24-bit + relatório</button>
@@ -125,9 +216,10 @@
       const tc = root.querySelector('#tgtC');
       tc.onchange = () => { const v = parseFloat(tc.value.replace(',', '.').replace('−', '-')); if (isFinite(v) && v < -4 && v > -30) { app.change('Alvo custom', () => { M.target = v; M.manual.target = true; }, { master: true }); remaster(); } };
       root.querySelector('#ceil').onchange = (e) => { app.change('Ceiling', () => { M.ceiling = +e.target.value; M.ceilAdj = 0; }, { master: true }); remaster(); };
+      V.bindGenre(app, root);
       root.querySelectorAll('[data-style]').forEach((b) => (b.onclick = () => {
         app.change('Estilo ' + b.dataset.style, () => {
-          M.style = b.dataset.style; M.manual = { target: M.manual.target };
+          M.style = b.dataset.style; M.manual = { target: M.manual.target, style: true };
           const t = MM.MASTER_STYLES[M.style].target; if (t && !M.manual.target) M.target = t;
         }, { master: true });
         remaster();
@@ -152,6 +244,7 @@
         remaster();
       }));
       V.master.drawSpec(app, root);
+      const cp = root.querySelector('#codecPanel'); if (cp) V.bindCodec(app, cp);
       const cv = root.querySelector('#mspec'), tip = root.querySelector('#mtip');
       cv.addEventListener('mousemove', (e) => {
         const r = cv.getBoundingClientRect(), f = 20 * Math.pow(1000, (e.clientX - r.left - 44) / (r.width - 56));
@@ -234,7 +327,7 @@
     const row = (label, key, val, min, max, step, fmt) => `<div class="prm"><label>${label}</label><input type="range" min="${min}" max="${max}" step="${step}" value="${val}" data-k="${key}"><span class="v" data-f="${fmt}">${fmtv(fmt, val)}</span></div>`;
     function fmtv(f, v) { v = +v; return f === 'db' ? UI.fmtDb(v) + ' dB' : f === 'cut' ? UI.fmtNum(v) + ' dB' : f === 'ratio' ? UI.fmtNum(v) + ':1' : f === 'ms' ? Math.round(v) + ' ms' : f === 'pct' ? Math.round(v * 100) + ' %' : f === 'hz' ? D.fmtHz(v) : f === 'w' ? Math.round(v) + ' %' : UI.fmtNum(v); }
     let body = `<div class="prm"><label>Ativo</label><button class="toggle ${c.on ? 'on' : ''}" data-t="on"></button><span></span></div>`;
-    if (k === 'eq') body += row('Low 80 Hz', 'low', c.low, -6, 6, 0.1, 'db') + row('Lama 300 Hz', 'mud', c.mud, -6, 3, 0.1, 'db') + row('Presença 3 kHz', 'pres', c.pres, -4, 4, 0.1, 'db') + row('Ar 9 kHz', 'air', c.air, -4, 6, 0.1, 'db') + `<div class="small muted" style="margin-top:6px">EQ da referência: ${(c.ref || []).map((g) => UI.fmtDb(g)).join(' · ')} dB</div>`;
+    if (k === 'eq') body += `<div class="prm"><label>Fase</label><select class="field" data-sel="phase"><option value="min" ${c.phase !== 'linear' ? 'selected' : ''}>Mínima · biquads matched</option><option value="linear" ${c.phase === 'linear' ? 'selected' : ''}>Linear · FIR (latência ${Math.round(((st.sampleRate > 50000 ? 16384 : 8192) / 2 / st.sampleRate) * 1000)} ms)</option></select><span></span></div><div class="small muted" style="margin:-2px 0 8px">Matched: curva exata até 20 kHz, sem latência. Linear: sem rotação de fase entre bandas (graves mais “inteiros”), com algum pré-eco; a latência é compensada.</div>` + row('Low 80 Hz', 'low', c.low, -6, 6, 0.1, 'db') + row('Lama 300 Hz', 'mud', c.mud, -6, 3, 0.1, 'db') + row('Presença 3 kHz', 'pres', c.pres, -4, 4, 0.1, 'db') + row('Ar 9 kHz', 'air', c.air, -4, 6, 0.1, 'db') + `<div class="small muted" style="margin-top:6px">EQ da referência: ${(c.ref || []).map((g) => UI.fmtDb(g)).join(' · ')} dB</div>`;
     if (k === 'dyn') body += row('Lama (máx.)', 'mud', c.mud, -6, 0, 0.1, 'cut') + row('Aspereza (máx.)', 'harsh', c.harsh, -6, 0, 0.1, 'cut');
     if (k === 'mb') body += row('Cruzamento low', 'xLow', c.xLow, 60, 300, 1, 'hz') + row('Cruzamento high', 'xHigh', c.xHigh, 1000, 6000, 10, 'hz') + c.bands.map((b, i) => row(['Low', 'Mid', 'High'][i] + ' ratio', `bands.${i}.ratio`, b.ratio, 1, 6, 0.1, 'ratio')).join('');
     if (k === 'glue') body += row('GR alvo', 'gr', c.gr, 0, 6, 0.1, 'cut') + row('Ratio', 'ratio', c.ratio, 1.2, 10, 0.1, 'ratio') + row('Ataque', 'atk', c.atk, 0.1, 100, 0.1, 'ms') + row('Release', 'rel', c.rel, 50, 1200, 10, 'ms');

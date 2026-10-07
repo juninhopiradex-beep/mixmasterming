@@ -1,4 +1,4 @@
-/* MixMind — vistas: início (vazio), a analisar e revisão de stems + direção */
+/* MIXMIND — vistas: início (vazio), a analisar e revisão de stems + direção */
 (function () {
   const MM = window.MM, D = MM.dsp, UI = MM.ui;
   const V = (MM.views = MM.views || {});
@@ -12,7 +12,7 @@
       return `<div class="hero">
         <div class="eyebrow acc">AI proposes. Engineer decides.</div>
         <h1 style="margin-top:10px">Mistura e masterização inteligente,<br><em>a partir dos teus stems.</em></h1>
-        <p class="lead">O MixMind ouve cada stem, percebe a função musical, propõe uma direção e executa a mistura e o master — tudo editável, explicado e comparável com loudness match. Corre inteiramente no teu browser: o áudio nunca sai do teu computador.</p>
+        <p class="lead">O MIXMIND ouve cada stem, percebe a função musical, propõe uma direção e executa a mistura e o master — tudo editável, explicado e comparável com loudness match. Corre inteiramente no teu browser: o áudio nunca sai do teu computador.</p>
         <div class="drop" id="dropzone">
           <div class="up">${UI.icon('upload')}</div>
           <h2>Arrasta uma pasta de stems</h2>
@@ -20,11 +20,12 @@
           <div class="row" style="justify-content:center">
             <button class="btn primary lg" id="pick">${UI.icon('folder')}Escolher ficheiros</button>
             <button class="btn lg" id="pickDir">${UI.icon('folder')}Escolher pasta</button>
+            <button class="btn lg ghost" id="openProj" title="Abre um projeto completo exportado (.mixmind)">${UI.icon('file')}Abrir projeto (.mixmind)</button>
           </div>
         </div>
         <div class="cards3">
           <div class="card-act" id="demo"><div class="ic">${UI.icon('music')}</div><b>Sessão de demonstração</b><span class="muted small">15 stems de uma Kizomba (94 BPM, F♯ menor) sintetizados no browser, com nomes errados de propósito.</span></div>
-          <div class="card-act" id="masterOnly"><div class="ic">${UI.icon('plug')}</div><b>Masterizar uma mix stereo</b><span class="muted small">Modo MixMind Master: carrega uma mix já feita e a IA propõe o master. Tu decides.</span></div>
+          <div class="card-act" id="masterOnly"><div class="ic">${UI.icon('plug')}</div><b>Masterizar uma mix stereo</b><span class="muted small">Modo MIXMIND Master: carrega uma mix já feita e a IA propõe o master. Tu decides.</span></div>
           <div class="card-act" id="stylesCard"><div class="ic">${UI.icon('brain')}</div><b>Treinar estilos</b><span class="muted small">Carrega Kizombas, Sembas, Afro House… A IA aprende o som de cada estilo e aplica-o quando escolhem o preset.</span></div>
         </div>
         ${rec.length ? `<div class="recent"><span class="muted small">Projetos recentes:</span>${rec.map((r) => `<button class="chip" data-open="${r.id}">${UI.icon('file')}${UI.esc(r.name)} <span class="dim mono" style="font-size:11px">${r.mode === 'master' ? 'master' : r.n + ' stems'}</span></button>`).join('')}</div>` : ''}
@@ -41,6 +42,7 @@
       const $ = (s) => root.querySelector(s);
       $('#pick').onclick = () => app.pickFiles();
       $('#pickDir').onclick = () => app.pickFiles({ dir: true });
+      $('#openProj').onclick = () => { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.mixmind,application/zip'; inp.onchange = () => inp.files[0] && app.openProjectFile(inp.files[0]); inp.click(); };
       $('#demo').onclick = () => app.loadDemo();
       $('#masterOnly').onclick = () => app.go('plugin');
       $('#stylesCard').onclick = () => app.go('styles');

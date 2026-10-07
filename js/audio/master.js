@@ -1,4 +1,4 @@
-/* MixMind — Mastering Engine + sistema de referência
+/* MIXMIND — Mastering Engine + sistema de referência
  * Análise do premaster → decisões por estilo/género/referência → render iterativo até ao alvo LUFS
  * com correção automática de true peak (o QC nunca deve falhar por TP).
  */
@@ -266,7 +266,7 @@
       const exTarget = target + (exPre - full.integrated);
       for (let k = 0; k < 6; k++) {
         M.inGain = +gain.toFixed(2);
-        const b = await MM.render(state, { premaster: ex, sr: psr, tail: 0, onProgress: o.onProgress ? (p) => o.onProgress(Math.min(0.5, (k + p) / 8)) : null });
+        const b = await MM.render(state, { premaster: ex, sr: psr, tail: 0, noFade: true, timeOffset: a0 / psr, onProgress: o.onProgress ? (p) => o.onProgress(Math.min(0.5, (k + p) / 8)) : null });
         const q = quick(b);
         const err = exTarget - q.lufs, tpOver = q.tp - ceiling;
         if (Math.abs(err) < 0.1 && tpOver <= 0.02) break;
@@ -279,7 +279,7 @@
     let lastQ = null;
     for (; it < maxIt; it++) {
       M.inGain = +gain.toFixed(2);
-      buf = await MM.render(state, { premaster, sr: o.sr || premaster.sampleRate, tail: 0, onProgress: o.onProgress ? (p) => o.onProgress(Math.min(0.97, 0.5 + (it + p) / maxIt)) : null });
+      buf = await MM.render(state, { premaster, sr: o.sr || premaster.sampleRate, tail: 0, noFade: true, onProgress: o.onProgress ? (p) => o.onProgress(Math.min(0.97, 0.5 + (it + p) / maxIt)) : null });
       const q = quick(buf);
       lastQ = q;
       const err = target - q.lufs, tpOver = q.tp - ceiling;
@@ -287,6 +287,8 @@
       if (capped && tpOver <= 0.02) break;
       if (!step(q, err, tpOver)) { if (tpOver <= 0.02) break; }
     }
+    // o fade do master (se houver) entra depois de acertar o loudness: não empurra o ganho para compensar
+    MM.applyMasterFade(state, buf, 0);
     met = await MM.measure(buf, { sections: state.music && state.music.sections });
     const reached = Math.abs(met.lufs - target) <= 0.3;
     M.reached = reached; M.achieved = +met.lufs.toFixed(1);
