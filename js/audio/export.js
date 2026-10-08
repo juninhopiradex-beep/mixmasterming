@@ -268,6 +268,9 @@
 
   /** meta (opcional): título, artista, ISRC… escritos no ficheiro; loud: métricas EBU R128 para o bext do WAV. */
   X.encode = async function (buf, fmt, bits, meta, loud) {
+    // demonstração (licenciamento ligado e sem licença válida): só os formatos permitidos e corte no tempo
+    const Lc = MM.license;
+    if (Lc && Lc.isDemo()) { if (!Lc.formatAllowed(fmt)) throw new Error(Lc.demoMessage()); buf = Lc.trim(buf); }
     const chs = D.channelsOf(buf), sr = buf.sampleRate, Dl = MM.delivery;
     const m = meta && Dl ? meta : null;
     if (fmt === 'wav') return { data: m ? Dl.wavWithMeta(X.wav(chs, sr, bits), m, loud) : X.wav(chs, sr, bits), ext: 'wav', type: 'audio/wav' };

@@ -46,6 +46,9 @@
     { id: 'tidal', name: 'Tidal', lufs: -14, tp: -1 },
     { id: 'club', name: 'Club', lufs: -8, tp: -0.5 },
     { id: 'radio', name: 'Rádio', lufs: -16, tp: -1, note: 'Menos limiter, mais dinâmica' },
+    // radiodifusão: normas de loudness para TV e rádio (o nome entra no nome do ficheiro — sem barras)
+    { id: 'ebu', name: 'Broadcast EBU', lufs: -23, tp: -1, note: 'EBU R128 · TV e rádio na Europa' },
+    { id: 'atsc', name: 'Broadcast ATSC', lufs: -24, tp: -2, note: 'ATSC A/85 · TV nos EUA' },
     { id: 'cd', name: 'CD', lufs: null, tp: -0.3, bits: 16, note: '16-bit · dither' },
   ];
 

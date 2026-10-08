@@ -108,7 +108,7 @@
         <button class="btn sm ${s.locked ? 'warn' : ''}" id="lockS">${UI.icon(s.locked ? 'lock' : 'unlock')}${s.locked ? 'Bloqueado' : 'Bloquear stem'}</button>
         <button class="btn sm ghost" id="resetS" title="Repor os valores propostos pela IA">${UI.icon('undo')}Reset IA</button>
       </div>
-      ${app.explainOn !== false ? `<div class="eyebrow" style="margin-top:22px">Explicação</div><div class="explain" style="margin-top:10px">${exps.length ? exps.slice(0, 7).map((e) => `<p><span class="tag ${e.module === 'Masking' ? 'ia' : ''}" style="margin-right:6px">${UI.esc(e.module)}</span>${UI.esc(e.text)}</p>`).join('') : '<p class="muted">Ainda sem decisões para este stem — corre o AI Mix & Master.</p>'}</div>
+      ${app.explainOn !== false ? `<div class="row" style="justify-content:space-between;margin-top:22px"><div class="eyebrow">Explicação</div><a class="small acc-t" data-act="notes" style="cursor:pointer">Notas do Motor →</a></div><div class="explain" style="margin-top:10px">${exps.length ? exps.slice(0, 7).map((e) => `<p><span class="tag ${e.module === 'Masking' ? 'ia' : ''}" style="margin-right:6px">${UI.esc(e.module)}</span>${UI.esc(e.text)}</p>`).join('') : '<p class="muted">Ainda sem decisões para este stem — corre o AI Mix & Master.</p>'}</div>
       <div style="margin-top:16px">${cb('Deteção de instrumento', s.conf)}${cb('Decisão de EQ', conf.eq)}${cb('Compressão', conf.comp)}${cb('Direção da mistura', conf.direction)}</div>` : ''}
     </div>`;
   }

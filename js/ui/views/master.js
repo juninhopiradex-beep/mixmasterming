@@ -205,7 +205,7 @@
           <div class="eyebrow" style="margin-top:22px">Exportar para</div>
           <div class="plat" style="margin-top:10px">${MM.PLATFORMS.filter((p) => p.id !== 'cd').map((p) => `<button data-plat="${p.id}" class="${p.lufs === M.target && p.tp === M.ceiling ? 'on' : ''}"><b>${p.name}</b><small>${UI.fmtNum(p.lufs, 0)} LUFS · ${UI.fmtNum(p.tp)} dBTP</small></button>`).join('')}<button data-plat="cd"><b>CD</b><small>16-bit · dither</small></button><button data-plat="dual"><b>Streaming dupla</b><small>Master + versão −14</small></button></div>
           <button class="btn primary lg" style="width:100%;margin-top:16px" data-view="export">${UI.icon('download')}Exportar WAV 24-bit + relatório</button>
-          ${(st.masterExplain || []).length ? `<div class="eyebrow" style="margin-top:22px">Decisões do master</div><div class="explain small" style="margin-top:8px">${st.masterExplain.map((e) => `<p><b>${UI.esc(e.module)}:</b> ${UI.esc(e.text)}</p>`).join('')}</div>` : ''}
+          ${(st.masterExplain || []).length ? `<div class="row" style="justify-content:space-between;margin-top:22px"><div class="eyebrow">Decisões do master</div><a class="small acc-t" data-act="notes" style="cursor:pointer">Notas do Motor →</a></div><div class="explain small" style="margin-top:8px">${st.masterExplain.map((e) => `<p><b>${UI.esc(e.module)}:</b> ${UI.esc(e.text)}</p>`).join('')}</div>` : ''}
         </div>
       </div>`;
     },

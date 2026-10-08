@@ -20,6 +20,8 @@
     if (!app.exportOpts) {
       app.exportOpts = { fmt: 'wav24', sr: st.sampleRate === 44100 ? 44100 : 48000, items: { master: true, report: true }, plats: {}, name: '' };
     }
+    const Lc = MM.license;
+    if (Lc && Lc.isDemo() && !Lc.formatAllowed((FORMATS.find((x) => x.id === app.exportOpts.fmt) || {}).f)) { const ok = FORMATS.find((x) => Lc.formatAllowed(x.f)); if (ok) { app.exportOpts.fmt = ok.id; app.exportOpts.name = ''; if (app.exportOpts.sr > 48000) app.exportOpts.sr = 48000; } }
     if (app.exportPreset) {
       const p = app.exportPreset, o = app.exportOpts;
       if (p.bits === 16) o.fmt = 'wav16';
@@ -52,8 +54,9 @@
       return `<div style="display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:26px">
         <div>
           <h1>Exportar</h1><p class="muted" style="margin:6px 0 20px">Escolhe o formato, o que incluir e as versões por plataforma. O relatório de QC vai junto. Tudo é renderizado no teu computador, com o mesmo motor que estás a ouvir.</p>
+          ${MM.license && MM.license.isDemo() ? `<div class="lic-banner"><div><b>Demonstração</b><span>${UI.esc(MM.license.demoText())}</span></div><button class="btn sm primary" data-act="license">${UI.icon('lock')}Ativar licença</button></div>` : ''}
           <div class="eyebrow">Formato</div>
-          <div class="fmt" style="grid-template-columns:repeat(6,1fr);margin-top:10px">${FORMATS.map((x) => `<button data-fmt="${x.id}" class="${o.fmt === x.id ? 'on' : ''}"><b>${x.name}</b><small>${x.sub}</small></button>`).join('')}</div>
+          <div class="fmt" style="grid-template-columns:repeat(6,1fr);margin-top:10px">${FORMATS.map((x) => { const lock = MM.license && !MM.license.formatAllowed(x.f); return `<button data-fmt="${x.id}" class="${o.fmt === x.id ? 'on' : ''}" ${lock ? 'disabled title="Disponível com licença"' : ''}><b>${lock ? UI.icon('lock', 'ic-inline') : ''}${x.name}</b><small>${lock ? 'Com licença' : x.sub}</small></button>`; }).join('')}</div>
           <div class="row" style="margin-top:14px"><span class="muted">Sample rate</span><div class="seg acc">${[44100, 48000, 88200, 96000].map((r) => `<button data-sr="${r}" class="${o.sr === r ? 'on' : ''}" ${f.f === 'mp3' && r > 48000 ? 'disabled' : ''}>${(r / 1000).toString().replace('.', ',')} kHz</button>`).join('')}</div>${o.sr !== st.sampleRate ? `<span class="small dim">Render a ${(o.sr / 1000).toString().replace('.', ',')} kHz (o projeto corre a ${(st.sampleRate / 1000).toString().replace('.', ',')} kHz)</span>` : ''}</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px">
             <div><div class="eyebrow">Incluir</div><div class="incl" style="margin-top:10px">${items.map(([k, l]) => `<label class="it ${o.items[k] ? 'on' : ''}"><span class="check"><input type="checkbox" data-it="${k}" ${o.items[k] ? 'checked' : ''}>${l}${k === 'stems' ? ` (${nStems})` : ''}</span><span>${UI.bytes(sizes[k])}</span></label>`).join('')}</div></div>
@@ -205,7 +208,52 @@
   };
 
   // ================= DEFINIÇÕES =================
+  const TYPES = { perpetual: 'Licença perpétua', subscription: 'Subscrição', demo: 'Licença de demonstração', gift: 'Oferta' };
+  const fmtD = (ms) => (ms ? new Date(ms).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' }) : '—');
   V.settings = {
+    licenseHTML(app) {
+      const L = MM.license;
+      if (!L || !L.enabled) return `<h2>Licença</h2><p class="muted">O licenciamento não está ligado nesta instalação (config.js sem LICENSE_API). Todas as funções estão disponíveis.</p>`;
+      const S = L.status, c = L.appConfig(), store = (c && c.store) || '', d = L.demoRules();
+      const keyForm = (label) => `<div class="lic-form"><input class="field mono" id="licKey" placeholder="MMX1-XXXXX-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false" maxlength="40"><button class="btn primary" id="licAct">${UI.icon('unlock')}${label || 'Ativar'}</button></div><div class="small muted" style="margin-top:8px">A chave está na tua <a href="${UI.esc(store)}/conta#licencas" target="_blank" rel="noopener">área de cliente</a> e no email de confirmação. Precisas de internet só para ativar.</div><div id="licMsg" style="margin-top:10px"></div>`;
+      let body = '';
+      if (S.mode === 'checking') body = '<p class="muted">A verificar a licença…</p>';
+      else if (S.mode === 'licensed') {
+        const p = S.payload;
+        body = `<div class="lic-card ok"><div class="row" style="justify-content:space-between"><div><div class="eyebrow">Licença ativa neste computador</div><h3>${UI.esc(TYPES[p.typ] || p.typ)} · versão ${p.maj}.x</h3></div><span class="tag ia">ATIVA</span></div>
+          <div class="kvgrid"><span>Chave</span><b class="mono">MMX1-•••••-•••••-•••••-${UI.esc(p.key4)}</b><span>Computador</span><b>${UI.esc(L.machineName().name)}</b>
+          <span>Validade</span><b>${p.exp ? `até ${fmtD(p.until)}${p.exp > (p.until || 0) ? ` <span class="muted">(tolerância até ${fmtD(p.exp)})</span>` : ''}` : 'Sem data de fim — funciona offline'}</b>
+          <span>Última verificação</span><b>${fmtD(p.iat)}</b><span>Próxima verificação</span><b>${p.chk < Date.now() ? 'na próxima ligação à internet' : fmtD(p.chk)}</b></div>
+          <div class="row" style="gap:8px;margin-top:16px"><button class="btn sm" id="licChk">Verificar agora</button><button class="btn sm ghost" id="licDeact">Desativar este computador</button></div>
+          <div id="licMsg" style="margin-top:10px"></div></div>
+          <p class="small muted" style="margin-top:14px">Para mudar de computador: desativa aqui (ou na área de cliente) e ativa a mesma chave no computador novo. Cada licença tem um computador ativo de cada vez.</p>`;
+      } else {
+        const blocked = S.blocked;
+        const head = S.mode === 'expired' ? `<div class="lic-banner bad"><div><b>O período da licença terminou</b><span>Renova a subscrição na área de cliente; a app volta a funcionar na próxima verificação.</span></div><a class="btn sm primary" href="${UI.esc(store)}/conta#subscricoes" target="_blank" rel="noopener">Renovar</a></div>`
+          : S.mode === 'invalid' ? `<div class="lic-banner bad"><div><b>Licença inválida neste computador</b><span>${UI.esc(S.why || '')}. Ativa de novo a tua chave.</span></div></div>`
+          : blocked ? `<div class="lic-banner bad"><div><b>Licença desligada pelo servidor</b><span>${UI.esc(blocked.message || blocked.code)}</span></div></div>` : '';
+        body = `${head}<div class="lic-card"><div class="eyebrow">Modo de demonstração</div><h3>Ativa a tua licença</h3><p class="muted small" style="margin:6px 0 14px">Na demonstração todas as funções de mistura e master estão disponíveis; a exportação fica limitada a ${d.exportSeconds} s em ${d.formats.map((f) => f.toUpperCase()).join(', ')}.</p>${keyForm()}</div>
+          ${store ? `<div class="row" style="gap:8px;margin-top:14px"><a class="btn sm acc" href="${UI.esc(store)}/#precos" target="_blank" rel="noopener">Ver planos e comprar</a><a class="btn sm ghost" href="${UI.esc(store)}/conta" target="_blank" rel="noopener">Área de cliente</a></div>` : ''}`;
+      }
+      return `<h2>Licença</h2><p class="muted">A palavra-passe dá acesso à tua conta na loja; a chave de licença ativa o MIXMIND neste computador.</p>${body}
+        ${MM.pwa && MM.pwa.installable ? `<div class="setrow"><div><b>Instalar como aplicação</b><small>Abre numa janela própria e funciona sem internet.</small></div><button class="btn sm acc" id="pwaInst">${UI.icon('download')}Instalar</button></div>` : ''}
+        <p class="small dim" style="margin-top:18px">Este computador é identificado por um código aleatório guardado neste navegador — sem dados pessoais. Se limpares os dados do site, desativa antes, ou pede à área de cliente para libertar a licença.</p>`;
+    },
+    licenseMount(app, root) {
+      const L = MM.license; if (!L) return;
+      const pi = root.querySelector('#pwaInst'); if (pi) pi.onclick = async () => { if (await MM.pwa.install()) UI.toast('MIXMIND instalado.', 'ok'); app.refresh(); };
+      const msg = (h, cls) => { const m = root.querySelector('#licMsg'); if (m) m.innerHTML = `<span class="${cls || 'muted'} small">${h}</span>`; };
+      const act = root.querySelector('#licAct'), inp = root.querySelector('#licKey');
+      if (act) {
+        const go = async () => { act.disabled = true; msg('A ativar…'); try { await L.activate(inp.value); UI.toast('Licença ativada neste computador.', 'ok'); } catch (e) { msg(UI.esc(e.message), 'bad-t'); act.disabled = false; } };
+        act.onclick = go; inp.onkeydown = (e) => { if (e.key === 'Enter') go(); };
+      }
+      const chk = root.querySelector('#licChk'); if (chk) chk.onclick = async () => { chk.disabled = true; msg('A verificar…'); await L.check(true); if (L.status.mode === 'licensed') UI.toast('Licença verificada.', 'ok'); app.refresh(); };
+      const de = root.querySelector('#licDeact'); if (de) de.onclick = async () => {
+        if (!(await UI.confirm('Desativar este computador?', 'A licença fica livre para ativares noutro computador. Aqui, a app passa ao modo de demonstração.', 'Desativar'))) return;
+        try { await L.deactivate(); UI.toast('Computador desativado.', 'ok'); } catch (e) { msg(UI.esc(e.message), 'bad-t'); }
+      };
+    },
     render(app) {
       const st = app.state, s = st.settings, sec = app.setSec || 'ai';
       const seg = (key, opts2, cur) => `<div class="seg acc">${opts2.map(([v, l, dis]) => `<button data-set="${key}" data-v="${v}" class="${cur === v ? 'on' : ''}" ${dis ? 'disabled title="Em breve"' : ''}>${l}</button>`).join('')}</div>`;
@@ -219,6 +267,7 @@
         <div class="setrow"><div><b>WebAssembly</b><small>${MM.wasm && MM.wasm.ready ? 'Ativo: FFT (análise e medição) e true peak correm em código nativo do browser — cerca de 3× mais rápidos.' : 'Indisponível neste browser — a usar JavaScript (mesmos resultados, mais lento).'}</small></div><span class="mono">${MM.wasm && MM.wasm.ready ? 'ativo' : '—'}</span></div>
         <div class="setrow"><div><b>Cache por stem</b><small>Stems inalterados não voltam a ser processados nos renders e nas medições (só o que mudou). ${MM.stemCache ? `${MM.stemCache.entries.size} stems em cache · ${Math.round(MM.stemCache.bytes() / 1048576)} MB de ${Math.round(MM.stemCache.budget() / 1048576)} MB` : ''}</small></div><div class="row" style="gap:8px"><button class="btn sm ghost" id="cacheClr">Limpar</button>${seg('stemCache', [['on', 'Ligada'], ['off', 'Desligada']], s.stemCache || 'on')}</div></div>
         <div class="setrow"><div><b>Limites atuais</b><small class="mono">EQ ±${MM.GUARD[s.guard].eq} dB · ${MM.GUARD[s.guard].bands} bandas · GR ≤ ${MM.GUARD[s.guard].gr} dB · saturação ≤ ${Math.round(MM.GUARD[s.guard].sat * 100)} %</small></div><span></span></div>`;
+      if (sec === 'license') body = V.settings.licenseHTML(app);
       if (sec === 'audio') body = `<h2>Áudio</h2><p class="muted">Motor Web Audio com processamento interno em 32-bit float.</p>
         <div class="setrow"><div><b>Sample rate do projeto</b><small>Definida pela placa de som; o export pode usar 44,1 / 48 / 88,2 / 96 kHz.</small></div><span class="mono">${app.engine.ctx ? (app.engine.ctx.sampleRate / 1000).toString().replace('.', ',') + ' kHz' : '—'}</span></div>
         <div class="setrow"><div><b>Latência de saída</b><small>Latência do browser + look-ahead do limiter (4 ms).</small></div><span class="mono">${app.engine.ctx ? Math.round(((app.engine.ctx.baseLatency || 0) + (app.engine.ctx.outputLatency || 0)) * 1000) + ' ms' : '—'}</span></div>
@@ -227,10 +276,11 @@
         <div class="setrow"><div><b>Projetos guardados neste computador</b><small>Guardados em IndexedDB (stems originais + decisões). Ficam só neste browser.</small></div><span class="mono">${app.recent.length}</span></div>
         <div id="projList">${app.recent.map((r) => `<div class="setrow"><div><b>${UI.esc(r.name)}</b><small>${new Date(r.updated).toLocaleString('pt-PT')} · ${r.mode === 'master' ? 'master' : r.n + ' stems'}</small></div><button class="btn sm ghost" data-delp="${r.id}">${UI.icon('trash')}Apagar</button></div>`).join('')}</div>`;
       if (sec === 'keys') body = `<h2>Idioma e atalhos</h2><p class="muted">Interface em Português (Portugal).</p><div class="kbdlist" style="margin-top:18px">${[['Play / pausa', 'Espaço'], ['Ouvir Original / Mix / Master / Ref', '1 · 2 · 3 · 4'], ['Loudness match', 'L'], ['Desfazer / Refazer', 'Ctrl+Z · Ctrl+Shift+Z'], ['Guardar versão', 'Ctrl+S'], ['Paleta de comandos', 'Ctrl+K'], ['Avançar / recuar 5 s (1 s com Shift)', '→ · ←'], ['Início', 'Home'], ['Mute / Solo do stem selecionado', 'M · S'], ['Fader / pan: fino', 'Shift + arrastar'], ['Fader / pan: valor da IA', 'Duplo clique']].map(([a, b]) => `<span>${a}</span><span class="kbd">${b}</span>`).join('')}</div>`;
-      return `<div class="set"><div class="setnav"><div class="eyebrow" style="margin-bottom:12px">Definições</div>${[['ai', 'Motor de IA'], ['audio', 'Áudio'], ['privacy', 'Privacidade'], ['keys', 'Idioma e atalhos']].map(([k, l]) => `<a data-sec="${k}" class="${sec === k ? 'on' : ''}">${l}</a>`).join('')}</div><div>${body}</div></div>`;
+      return `<div class="set"><div class="setnav"><div class="eyebrow" style="margin-bottom:12px">Definições</div>${[['license', 'Licença'], ['ai', 'Motor de IA'], ['audio', 'Áudio'], ['privacy', 'Privacidade'], ['keys', 'Idioma e atalhos']].map(([k, l]) => `<a data-sec="${k}" class="${sec === k ? 'on' : ''}">${l}</a>`).join('')}</div><div>${body}</div></div>`;
     },
     mount(app, root) {
       root.querySelectorAll('[data-sec]').forEach((a) => (a.onclick = () => { app.setSec = a.dataset.sec; app.refresh(); }));
+      V.settings.licenseMount(app, root);
       const clr = root.querySelector('#cacheClr'); if (clr) clr.onclick = () => { MM.stemCache.clear(); app.refresh(); UI.toast('Cache por stem limpa.', 'ok'); };
       root.querySelectorAll('[data-set]').forEach((b) => (b.onclick = () => { app.state.settings[b.dataset.set] = b.dataset.v; if (b.dataset.set === 'stemCache') { MM.STEM_CACHE_OFF = b.dataset.v === 'off'; if (MM.STEM_CACHE_OFF) MM.stemCache.clear(); } app.saveSoon(); app.refresh(); if (b.dataset.set === 'guard' && app.ready()) UI.toast('Novo limite aplicado na próxima execução do AI Mix & Master.', 'ok'); }));
       root.querySelectorAll('[data-delp]').forEach((b) => (b.onclick = async () => { if (await UI.confirm('Apagar projeto', 'Os stems e as decisões guardadas neste browser serão apagados.', 'Apagar')) { await MM.deleteProject(b.dataset.delp); app.recent = await MM.listProjects(); app.refresh(); } }));

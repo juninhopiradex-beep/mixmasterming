@@ -20,6 +20,7 @@
     document.getElementById('app').innerHTML = '<header class="topbar"></header><nav class="nav"></nav><div class="workspace"></div><footer class="dock" style="display:none"></footer>';
     App.engine.on((ev) => { if (['play', 'pause', 'stop', 'end', 'monitor'].includes(ev)) App.renderTop(); App.renderDockButtons(); });
     App.bindGlobal();
+    if (MM.license) MM.license.onChange(() => { App.renderTop(); if (['settings', 'export'].includes(App.view)) App.refresh(); });
     App.recent = await MM.listProjects();
     App.render();
     App.loop();
@@ -50,7 +51,7 @@
     const mon = e.monitor;
     const hasRef = !!st.refBuffer;
     top.innerHTML = `
-      <div class="brand" ${App.hasSession() ? '' : 'data-view="home" style="cursor:pointer"'}>${UI.logo()}<span class="brand-name">MIXMIND <em>by Piradex</em></span> <small>AI Mixing & Mastering · v${MM.VERSION}</small></div>
+      <div class="brand" ${App.hasSession() ? '' : 'data-view="home" style="cursor:pointer"'}>${UI.logo()}<span class="brand-name">MIXMIND <em>by Piradex</em></span> <small>AI Mixing & Mastering · v${MM.VERSION}</small>${MM.license && MM.license.enabled && MM.license.status.mode !== 'checking' ? (MM.license.isDemo() ? '<button class="lic-pill demo" data-act="license" title="Sem licença ativa — exportação limitada. Clica para ativar.">DEMO</button>' : '') : ''}</div>
       ${App.hasSession() ? `<div class="proj"><input class="proj-name" value="${UI.esc(st.project.name)}" spellcheck="false" title="Nome do projeto">
         ${vers.length ? `<select class="field" id="verSel" style="height:32px;width:auto;font-size:13px">${vers.map((v) => `<option value="${v.id}"${v.id === st.currentVersion ? ' selected' : ''}>${UI.esc(v.name)}${v.score ? ' · ' + v.score : ''}</option>`).join('')}</select>` : ''}</div>` : ''}
       <div class="spacer"></div>
@@ -674,6 +675,7 @@
           },
           lm: () => { App.engine.setLM(!App.engine.lm); App.renderTop(); App.curView && App.curView.onMonitor && App.curView.onMonitor(App); },
           undo: App.undo, redo: App.redo, ai: () => App.runAI(), clearSolo: App.clearSolo, update: () => App.runAI({ keepMix: true }), palette: App.palette,
+          license: () => { App.setSec = 'license'; App.go('settings'); }, notes: () => App.go('notes'),
         }[act];
         if (fn) { e.preventDefault(); fn(); }
       }
@@ -778,6 +780,8 @@
       ...NAV.map(([k, l, ic]) => ['Ir para ' + l, ic, () => App.go(k), App.hasSession()]),
       ['Estilos · treinar com músicas', 'brain', () => App.go('styles'), true],
       ['Definições', 'gear', () => App.go('settings'), true],
+      ['Notas do Motor (todas as decisões)', 'info', () => App.go('notes'), App.ready()],
+      ['Licença: ativar, verificar ou desativar', 'lock', () => { App.setSec = 'license'; App.go('settings'); }, !!(MM.license && MM.license.enabled)],
       ['Novo projeto', 'file', () => { App.resetSession(); App.view = 'home'; App.render(); }, true],
     ].filter((c) => c[3]);
     UI.modal(`<div class="palette"><input placeholder="Escreve um comando…" autofocus><div class="list"></div></div>`, (s, close) => {

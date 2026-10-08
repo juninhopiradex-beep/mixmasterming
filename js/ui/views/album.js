@@ -157,6 +157,7 @@
       const say = (t) => { if (el) el.innerHTML = t; };
       const safe = (s) => String(s || '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, '_').slice(0, 60) || 'Album';
       try {
+        if (MM.license && kind !== 'masters') MM.license.guard(kind === 'ddp' ? 'O export DDP' : 'O export WAV + CUE');
         if (kind === 'masters') {
           const files = [];
           for (let i = 0; i < al.tracks.length; i++) {
