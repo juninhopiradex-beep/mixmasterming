@@ -23,6 +23,7 @@ const J = (fn, arg) => page.evaluate(fn, arg);
 
 console.log('E2E · sessão demo');
 await page.goto(url);
+await page.waitForSelector('.brand');
 await test('a app arranca com o nome e a versão', async () => {
   const brand = await J(() => document.querySelector('.brand').innerText);
   ok(/MIXMIND/.test(brand) && /by Piradex/.test(brand), brand);
@@ -109,8 +110,22 @@ await test('editor de voz: analisa a voz, a nota editada entra no render antes d
   ok(r.changed > 0.1, 'a nota editada mudou no render (' + r.changed.toFixed(2) + ')');
   ok(!r.tuned, 'Ctrl+Z repõe a voz original');
 });
+await test('radiodifusão: versão EBU R128 a −23 LUFS e ATSC A/85 a −24 LUFS, com true peak no ceiling', async () => {
+  const r = await J(async () => {
+    const st = MM.app.state, D = MM.dsp, pm = st.premasterBuf, pmL = D.loudness(D.channelsOf(pm), pm.sampleRate).integrated, out = {};
+    for (const id of ['ebu', 'atsc']) { const p = MM.PLATFORMS.find((x) => x.id === id); const res = await MM.masterize(st, pm, { sr: pm.sampleRate, target: p.lufs, ceiling: p.tp, premasterLufs: pmL, temporary: true }); out[id] = { lufs: res.metrics.lufs, tp: res.metrics.tp, ceil: p.tp }; }
+    return { out, target: st.master.target };
+  });
+  for (const [id, want] of [['ebu', -23], ['atsc', -24]]) { near(r.out[id].lufs, want, 0.5, id + ' LUFS'); ok(r.out[id].tp <= r.out[id].ceil + 0.1, id + ' TP ' + r.out[id].tp); }
+  ok(r.target > -15, 'o master principal não mudou de alvo (' + r.target + ')');
+});
+await test('Notas do Motor: decisões da mistura e do master com faixa, ajuste e motivo', async () => {
+  await J(() => MM.app.go('notes'));
+  const r = await J(() => ({ rows: document.querySelectorAll('table.mm-notes tbody tr:not(.grp)').length, groups: [...document.querySelectorAll('table.mm-notes tr.grp')].map((x) => x.innerText.trim()), why: [...document.querySelectorAll('table.mm-notes td.why')].filter((x) => x.innerText.trim() !== '—').length }));
+  ok(r.rows > 40 && r.groups.includes('MASTER') && r.groups.length > 10 && r.why > r.rows * 0.6, JSON.stringify({ rows: r.rows, g: r.groups.length, why: r.why }));
+});
 await test('todas as vistas abrem sem erros', async () => {
-  for (const v of ['mixer', 'arrange', 'tune', 'analysis', 'automation', 'master', 'compare', 'refs', 'export', 'settings', 'plugin', 'styles', 'album']) { await J((x) => MM.app.go(x), v); await page.waitForTimeout(400); }
+  for (const v of ['mixer', 'arrange', 'tune', 'analysis', 'automation', 'master', 'notes', 'compare', 'refs', 'export', 'settings', 'plugin', 'styles', 'album']) { await J((x) => MM.app.go(x), v); await page.waitForTimeout(400); }
   ok(!errors.length, errors.join(' | '));
 });
 await test('projeto completo (.mixmind): exportar e reabrir mantém versões, mutes e automação', async () => {

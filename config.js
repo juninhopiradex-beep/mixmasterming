@@ -7,4 +7,10 @@ window.MIXMIND_CONFIG = {
   SUPABASE_URL: '',      // ex.: 'https://abcdefgh.supabase.co'
   SUPABASE_ANON_KEY: '', // Project Settings → API → anon public
   BUCKET: 'submissions',
+
+  // Licenciamento (v1.8, OPCIONAL). Vazio = licenciamento desligado (tudo disponível, como antes).
+  // Com a loja instalada (pasta server/), indica o endereço público dela e a chave pública de verificação
+  // (Administração → Configurações → Licenciamento → "Chave pública"). A chave pública NÃO é secreta.
+  LICENSE_API: '',        // ex.: 'https://loja.mixmind.example'
+  LICENSE_PUBLIC_KEY: '', // SPKI em base64 (MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE…). Se ficar vazia, é obtida e fixada na 1.ª ativação.
 };

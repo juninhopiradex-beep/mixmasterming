@@ -1,4 +1,4 @@
-# MIXMIND by Piradex — Auditoria de áudio (v1.1 → v1.7)
+# MIXMIND by Piradex — Auditoria de áudio (v1.1 → v1.8)
 
 Auditoria técnica da cadeia completa (mistura → mix bus → master → export), feita com medições objetivas no Chromium (o mesmo motor Web Audio que corre no browser), validadas com o `ebur128` do ffmpeg.
 
@@ -172,3 +172,17 @@ Voz sintética com pitch e formantes conhecidos (vogal “a”: F1 700 Hz, F2 12
 | Qualidade do PSOLA (relação harmónicos/ruído, nota sustentada; original 54,5 dB) | −5 st 40,0 · −2 st 41,7 · −1 st 43,3 · +1 st 44,9 · +2 st 43,6 · +5 st 46,3 dB — artefactos ~40 dB abaixo dos harmónicos. A interpolação entre grãos vizinhos e as marcas sub-amostra valeram +3 a +6 dB |
 | Velocidade (Chromium, demo 2:24) | análise 2,0 s · render depois de editar uma nota 0,2–0,4 s (só a zona editada) |
 | Integração | a nota editada muda o render da pré-master (a voz entra antes do mixer); Ctrl+Z repõe a voz original; o monitor “Original” continua cru |
+
+## v1.8 — Loja, licenças, radiodifusão e Notas do Motor (validação)
+
+Detalhe completo em `docs/LICENCIAMENTO.md`. Testes: `npm run test:loja` e `npm run test:e2e`.
+
+| Teste | Resultado |
+|---|---|
+| 12 validações obrigatórias (API) | 1 compra = 1 licença · pendente sem licença · borderô não ativa · só a aprovação ativa, sem duplicar · 2.ª máquina recusada · mudança de computador com limite e recuperação · cancelar mantém o acesso até ao fim do período · perpétua não expira com a subscrição · eventos repetidos idempotentes (Stripe, PayPal, simulado) · isolamento entre clientes · comprovativo offline · palavra-passe inicial nunca exposta — **18/18** com extras (permissões, limite de tentativas, suspensão ≠ revogação, 2FA, CSRF, reembolso/contestação, painel por moeda, textos legais) |
+| Interface da loja no Chromium | compra com pagamento simulado; transferência AO com conversão e comprovativo pela interface (mensagem exata); fila de validação com pré-visualização e confirmação obrigatória; email confirmado → chave visível → desativar computador; troca obrigatória da palavra-passe inicial; todas as secções da administração sem erros — **8/8** |
+| Licença na app (Chromium + loja real) | demonstração: WAV recusado, MP3 cortado a 60,00 s com fade · ativação verificada com ECDSA P-256 no navegador · perpétua funciona offline · comprovativo copiado para outro computador recusado · payload adulterado recusado · 2.ª máquina recusada · desativar liberta · revogação remota → demonstração — **11/11** |
+| Exemplos desktop | CLI Node ativa/valida/desativa; verificador C++/OpenSSL aceita o comprovativo deste computador e recusa outro computador e adulteração — **4/4** |
+| Radiodifusão (sessão demo) | EBU R128 −23 LUFS (±0,5) com TP ≤ −1 dBTP · ATSC A/85 −24 LUFS (±0,5) com TP ≤ −2 dBTP; o master principal mantém o seu alvo |
+| Notas do Motor (sessão demo) | > 40 decisões em > 10 faixas + Master, com motivo em > 60 % das notas |
+| Regressão | DSP 23/23 · voz 15/15 · ponta a ponta 13/13 · Supabase 4/4 |

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Comprar — MIXMIND by Piradex</title>
+<link rel="stylesheet" href="/assets/css/store.css">
+<script src="/assets/js/i18n.js"></script>
+<script src="/assets/js/lib.js"></script>
+<script src="/assets/js/checkout.js" defer></script>
+</head>
+<body>
+<main class="wrap" style="padding-top:36px;padding-bottom:60px">
+  <h1 style="font-size:34px">Comprar o MIXMIND</h1>
+  <p class="muted" style="margin-top:8px">O preço final é calculado no servidor, com o câmbio e os impostos aplicáveis ao teu país e método de pagamento.</p>
+  <div id="closed"></div>
+  <form id="f" class="grid co" novalidate>
+    <div class="stack">
+      <div class="card">
+        <span class="eyebrow">1 · Plano</span>
+        <div class="grid g3" id="plans" style="margin-top:12px"></div>
+      </div>
+      <div class="card" id="acct">
+        <span class="eyebrow">2 · Conta</span>
+        <div id="acctBody"></div>
+      </div>
+      <div class="card">
+        <span class="eyebrow">3 · País e faturação</span>
+        <div class="grid g2">
+          <div><label class="f" for="country">País</label><select class="field" id="country" required></select></div>
+          <div><label class="f" for="taxId">NIF / identificação fiscal <span class="dim">(se precisares de fatura)</span></label><input class="field" id="taxId" maxlength="40" autocomplete="off"></div>
+          <div><label class="f" for="billingName">Nome ou empresa para faturação <span class="dim">(opcional)</span></label><input class="field" id="billingName" maxlength="120" autocomplete="organization"></div>
+          <div><label class="f" for="billingAddress">Morada de faturação <span class="dim">(opcional)</span></label><input class="field" id="billingAddress" maxlength="300" autocomplete="street-address"></div>
+        </div>
+      </div>
+      <div class="card">
+        <span class="eyebrow">4 · Método de pagamento</span>
+        <div id="methods" class="stack" style="margin-top:12px"><p class="dim small">Escolhe primeiro o país.</p></div>
+      </div>
+    </div>
+    <aside class="card hi">
+      <span class="eyebrow">Resumo</span>
+      <div id="sum" style="margin-top:12px"><p class="dim small">Escolhe o plano, o país e o método.</p></div>
+      <p class="tiny dim" id="taxNotice" style="margin-top:12px"></p>
+      <hr class="sep" style="margin:16px 0">
+      <label class="check"><input type="checkbox" id="acceptTerms"> <span>Li e aceito os <a href="/termos" target="_blank">termos e condições</a>.</span></label>
+      <label class="check" style="margin-top:10px"><input type="checkbox" id="acceptPrivacy"> <span>Li a <a href="/privacidade" target="_blank">política de privacidade</a>.</span></label>
+      <p class="tiny dim" id="refundLine" style="margin-top:12px"></p>
+      <button class="btn primary lg block" style="margin-top:16px" id="go" type="submit">Continuar para o pagamento</button>
+      <p class="tiny dim" style="margin-top:10px;text-align:center">Pagamentos com cartão e PayPal concluem-se na página segura do prestador. A licença só é emitida depois de o pagamento ser confirmado pelo servidor.</p>
+    </aside>
+  </form>
+</main>
+</body>
+</html>

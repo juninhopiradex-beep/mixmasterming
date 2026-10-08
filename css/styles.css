@@ -1,3 +1,6 @@
+/* Geist e Geist Mono alojadas localmente (funcionam offline) — SIL Open Font License, assets/fonts/OFL-Geist.txt */
+@font-face { font-family: 'Geist'; src: url('../assets/fonts/Geist-Variable.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'Geist Mono'; src: url('../assets/fonts/GeistMono-Variable.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
 /* MIXMIND — design system */
 :root {
   --bg: #07090d;
@@ -659,7 +662,7 @@ em.down { color: var(--bad); }
 .altab td:nth-child(3) .field { min-width: 120px; }
 .altab td:last-child { white-space: nowrap; }
 .album { grid-template-columns: 250px minmax(0, 1fr) 300px; }
-@media (max-width: 1500px) { .nav a { padding-left: 10px; padding-right: 10px; } .nav { overflow-x: auto; scrollbar-width: none; } }
+@media (max-width: 1500px) { .nav a { padding-left: 8px; padding-right: 8px; gap: 6px; font-size: 13px; } .nav .sep { margin: 0 3px; } .nav { overflow-x: auto; scrollbar-width: none; } }
 
 /* v1.6 — score ancorado */
 .sbar { row-gap: 2px; }
@@ -693,3 +696,25 @@ em.down { color: var(--bad); }
 .dial span small { font-size: 8.5px; color: var(--muted); margin-top: 2px; }
 .mod.tunemod { background: rgba(94,234,212,.12); color: #5eead4; border-color: rgba(94,234,212,.35); cursor: pointer; }
 @media (max-width: 1100px) { .tn-body { grid-template-columns: minmax(0, 1fr); } .tn-side { display: none; } }
+
+/* ===== v1.8 · licença, demonstração e Notas do Motor ===== */
+.lic-pill { margin-left: 10px; height: 22px; padding: 0 9px; border-radius: 999px; font: 700 10.5px var(--mono); letter-spacing: .1em; cursor: pointer; border: 1px solid rgba(251, 191, 36, .45); background: var(--warn-bg); color: var(--warn); vertical-align: middle; }
+.lic-pill:hover { background: rgba(251, 191, 36, .16); }
+.lic-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(251, 191, 36, .35); background: var(--warn-bg); margin: 0 0 18px; }
+.lic-banner b { display: block; color: var(--warn); font-size: 14px; } .lic-banner span { font-size: 13px; color: var(--text); opacity: .85; }
+.lic-banner.bad { border-color: rgba(251, 113, 133, .4); background: rgba(251, 113, 133, .08); } .lic-banner.bad b { color: var(--bad); }
+.lic-card { margin-top: 18px; padding: 20px 22px; border-radius: 16px; border: 1px solid var(--line2); background: var(--panel); }
+.lic-card.ok { border-color: var(--acc-line); box-shadow: 0 0 0 1px rgba(94, 234, 212, .08); }
+.lic-card h3 { margin: 6px 0 0; font-size: 19px; }
+.lic-form { display: flex; gap: 10px; } .lic-form .field { flex: 1; height: 44px; font-size: 15px; letter-spacing: .04em; text-transform: uppercase; }
+.kvgrid { display: grid; grid-template-columns: 170px 1fr; gap: 8px 16px; margin-top: 16px; font-size: 13.5px; } .kvgrid > span { color: var(--muted); } .kvgrid b { font-weight: 560; }
+.ic-inline { width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; }
+.fmt button:disabled { opacity: .45; cursor: not-allowed; }
+.notes-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 4px 0 16px; }
+.notes-tools .field { height: 36px; width: auto; min-width: 180px; }
+table.mm-notes { width: 100%; max-width: none; border-collapse: collapse; font-size: 13.5px; }
+table.mm-notes th { text-align: left; font: 600 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 10px; border-bottom: 1px solid var(--line2); position: sticky; top: 0; background: var(--bg, #07090d); }
+table.mm-notes td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.mm-notes td.trk { white-space: nowrap; font-weight: 600; } table.mm-notes td.why { color: var(--muted); }
+table.mm-notes tr.grp td { background: var(--panel2); font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--acc); }
+.confbar { display: inline-block; width: 46px; height: 5px; border-radius: 3px; background: var(--line2); vertical-align: middle; overflow: hidden; } .confbar i { display: block; height: 100%; background: var(--acc); }

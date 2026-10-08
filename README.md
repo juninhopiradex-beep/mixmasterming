@@ -50,6 +50,14 @@ Inclui uma **sessão de demonstração** (Kizomba, 94 BPM, F♯ menor, 15 stems 
 
 ---
 
+### Loja, contas e licenças (v1.8)
+A pasta **`server/`** traz a loja completa: página de vendas, checkout (cartão via Stripe Checkout, PayPal, transferência bancária em Portugal e em Angola com envio de comprovativo), área de cliente, administração (transferências e comprovativos, encomendas, clientes, licenças, subscrições, configurações, textos legais e emails, equipa com 2FA e permissões, auditoria) e a **API de licenças** usada pela app. Node 22 sem dependências, SQLite.
+
+- **Correr em modo de testes:** `ADMIN_EMAIL=… ADMIN_INITIAL_PASSWORD=… npm run loja` → <http://localhost:8790> (pagamentos simulados, dados bancários de exemplo, emails retidos no painel). Opcional: `npm run loja:demo` cria clientes e compras de demonstração.
+- **Na app**, o licenciamento só liga quando `config.js` tem `LICENSE_API` (e `LICENSE_PUBLIC_KEY`). Sem isso tudo funciona como antes. Com isso: **Definições → Licença** para ativar; sem licença a app fica em demonstração (exportação limitada a 60 s em MP3, configurável).
+- **Produção:** ver [`docs/LICENCIAMENTO.md`](docs/LICENCIAMENTO.md) — arquitetura, segurança, Stripe/PayPal, instalação, cópias de segurança e a **lista do que falta configurar** (credenciais, dados bancários, câmbios, impostos, textos legais validados, email). API e exemplos desktop: [`docs/API-LICENCAS.md`](docs/API-LICENCAS.md), `examples/desktop/`.
+- **Também na v1.8:** vista **Notas do Motor** (todas as decisões com faixa, ajuste e motivo; CSV/TXT), alvos de **radiodifusão** (EBU R128 −23 LUFS/−1 dBTP, ATSC A/85 −24/−2), app **instalável e offline** (service worker) com fontes locais.
+
 ### Editor de voz (v1.7)
 1. **Voz** no menu (ou o botão **VOZ** no canal da voz no Mixer). A primeira vez, a voz é analisada (~2 s para 2½ min) e a análise fica guardada no projeto.
 2. Cada nota é um bloco no piano roll; a linha laranja é o pitch que vai soar e o tracejado o original. As barras amarelas mostram quanto falta para a nota da escala.
@@ -93,6 +101,8 @@ npm run test:dsp         # DSP, formatos, entrega/DDP, wasm, modelo do engenheir
 npm run test:tune        # editor de voz: precisão de pitch, formantes, tempo, ganho, harmonia (voz sintética)
 npm run test:e2e         # sessão demo completa no Chromium
 npm run test:cloud       # portal → aprovação → biblioteca, contra um Supabase falso (tests/mock-supabase.py)
+npm run test:loja        # loja e licenças: 12 validações obrigatórias + extras, interface no Chromium,
+                         # licença na app (ECDSA no browser) e exemplos desktop (Node e C++/OpenSSL)
 npm run bench            # JavaScript vs WebAssembly
 ```
 Correm a cada push no GitHub Actions (`.github/workflows/tests.yml`).
@@ -179,6 +189,18 @@ wasm/                        fonte C dos núcleos WebAssembly e script de compil
 tests/                       testes (Node, Chromium e Supabase falso)
 docs/ARQUITETURA.md          proposta técnica completa (30 componentes) e roadmap
 docs/AUDITORIA.md            auditoria de áudio: causas do som "de tubo", correções e medições
+docs/LICENCIAMENTO.md        loja, pagamentos, licenças: arquitetura, segurança, instalação, pendentes de produção
+docs/API-LICENCAS.md         API /api/v1 e formato do comprovativo assinado
+js/core/license.js           licença na app: ativação, verificação ECDSA (WebCrypto), demonstração
+js/core/pwa.js · sw.js       app instalável e offline
+js/ui/views/notes.js         Notas do Motor
+server/                      loja, área de cliente, administração e API de licenças (Node 22, SQLite)
+  src/                       servidor, rotas, pagamentos (Stripe, PayPal, transferências), licenças, tarefas
+  public/                    páginas (loja, checkout, conta, admin) — sem scripts inline (CSP)
+  migrations/ · test/        esquema SQL · testes (API e interface)
+  scripts/                   backup.mjs, seed-demo.mjs
+  .env.example               variáveis (sem segredos)
+examples/desktop/            integração das licenças: Node, C++/OpenSSL, JUCE
 ```
 
 ---
@@ -189,6 +211,8 @@ docs/AUDITORIA.md            auditoria de áudio: causas do som "de tubo", corre
 - O **MP3** usa o codificador `lamejs` (LGPL), incluído em `js/vendor/` — funciona offline. A pré-escuta AAC depende do browser e do sistema (o Chromium em Linux não tem codificador AAC; a app só mostra os codecs disponíveis).
 - Sessões muito longas (30+ stems de 6+ minutos) podem esgotar a memória do separador; usa a qualidade de análise “Rápida”.
 - O editor de voz é **monofónico** (uma nota de cada vez — voz, sopros, baixo); acordes e coros num só stem não são separados. Correções grandes (mais de ±5 meios-tons) começam a soar processadas, como em qualquer PSOLA.
+- **Licenciamento numa app web é dissuasão, não DRM**: o código corre no navegador do utilizador. O comprovativo é assinado (ECDSA) e ligado ao computador, mas quem altere o JavaScript consegue contorná-lo. Numa app nativa assinada a mesma verificação é mais robusta (exemplos em `examples/desktop/`).
+- O **motor de IA com chave API própria** ainda não existe — aparece como “Em breve” na página de vendas.
 - O browser não permite plugins **VST3/AU/AAX**. O motor foi desenhado para ser portado para JUCE (C++) com a mesma arquitetura — ver roadmap.
 - Os projetos, a biblioteca de estilos e o modelo do engenheiro ficam guardados no IndexedDB **deste browser** (Definições → Privacidade para apagar projetos). Para levar um projeto para outro computador usa o ficheiro `.mixmind`. A biblioteca pode ser partilhada pelo backend opcional ou por `styles/library.json`.
 - A cache por stem dá um resultado igual ao render completo a −98 dB (diferenças de arredondamento em vírgula flutuante), inaudível.

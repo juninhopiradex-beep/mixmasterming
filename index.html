@@ -7,53 +7,56 @@
   <meta name="description" content="Mistura e masterização inteligente baseada em stems, no browser. AI proposes. Engineer decides.">
   <meta name="theme-color" content="#07090d">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=1.7">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="stylesheet" href="css/styles.css?v=1.8">
 </head>
 <body>
   <div id="app"></div>
   <noscript><p style="padding:40px;color:#fff">O MIXMIND precisa de JavaScript ativo.</p></noscript>
 
   <!-- configuração opcional do backend (Supabase) -->
-  <script src="config.js?v=1.7"></script>
+  <script src="config.js?v=1.8"></script>
   <!-- núcleo DSP e áudio -->
-  <script src="js/core/wasm-bin.js?v=1.7"></script>
-  <script src="js/core/wasm.js?v=1.7"></script>
-  <script src="js/core/dsp.js?v=1.7"></script>
-  <script src="js/core/worklets.js?v=1.7"></script>
-  <script src="js/audio/analysis.js?v=1.7"></script>
-  <script src="js/audio/ai.js?v=1.7"></script>
-  <script src="js/audio/engine.js?v=1.7"></script>
-  <script src="js/audio/master.js?v=1.7"></script>
-  <script src="js/audio/styles.js?v=1.7"></script>
-  <script src="js/audio/insight.js?v=1.7"></script>
-  <script src="js/audio/stemcache.js?v=1.7"></script>
-  <script src="js/audio/engineer.js?v=1.7"></script>
-  <script src="js/audio/tune.js?v=1.7"></script>
-  <script src="js/audio/export.js?v=1.7"></script>
-  <script src="js/audio/delivery.js?v=1.7"></script>
-  <script src="js/audio/album.js?v=1.7"></script>
-  <script src="js/audio/demo.js?v=1.7"></script>
-  <script src="js/core/session.js?v=1.7"></script>
-  <script src="js/core/sections.js?v=1.7"></script>
-  <script src="js/core/project.js?v=1.7"></script>
-  <script src="js/core/cloud.js?v=1.7"></script>
+  <script src="js/core/wasm-bin.js?v=1.8"></script>
+  <script src="js/core/wasm.js?v=1.8"></script>
+  <script src="js/core/dsp.js?v=1.8"></script>
+  <script src="js/core/worklets.js?v=1.8"></script>
+  <script src="js/audio/analysis.js?v=1.8"></script>
+  <script src="js/audio/ai.js?v=1.8"></script>
+  <script src="js/audio/engine.js?v=1.8"></script>
+  <script src="js/audio/master.js?v=1.8"></script>
+  <script src="js/audio/styles.js?v=1.8"></script>
+  <script src="js/audio/insight.js?v=1.8"></script>
+  <script src="js/audio/stemcache.js?v=1.8"></script>
+  <script src="js/audio/engineer.js?v=1.8"></script>
+  <script src="js/audio/tune.js?v=1.8"></script>
+  <script src="js/audio/export.js?v=1.8"></script>
+  <script src="js/audio/delivery.js?v=1.8"></script>
+  <script src="js/audio/album.js?v=1.8"></script>
+  <script src="js/audio/demo.js?v=1.8"></script>
+  <script src="js/core/session.js?v=1.8"></script>
+  <script src="js/core/sections.js?v=1.8"></script>
+  <script src="js/core/project.js?v=1.8"></script>
+  <script src="js/core/cloud.js?v=1.8"></script>
+  <!-- licença (só ativa quando config.js define LICENSE_API) e aplicação instalável/offline -->
+  <script src="js/core/license.js?v=1.8"></script>
+  <script src="js/core/pwa.js?v=1.8"></script>
   <!-- interface -->
-  <script src="js/ui/ui.js?v=1.7"></script>
-  <script src="js/ui/views/home-import.js?v=1.7"></script>
-  <script src="js/ui/views/mixer.js?v=1.7"></script>
-  <script src="js/ui/views/arrange.js?v=1.7"></script>
-  <script src="js/ui/views/tune.js?v=1.7"></script>
-  <script src="js/ui/views/analysis.js?v=1.7"></script>
-  <script src="js/ui/views/automation.js?v=1.7"></script>
-  <script src="js/ui/views/master.js?v=1.7"></script>
-  <script src="js/ui/views/compare-refs.js?v=1.7"></script>
-  <script src="js/ui/views/export-settings.js?v=1.7"></script>
-  <script src="js/ui/views/plugin.js?v=1.7"></script>
-  <script src="js/ui/views/styles.js?v=1.7"></script>
-  <script src="js/ui/views/album.js?v=1.7"></script>
-  <script src="js/ui/app.js?v=1.7"></script>
+  <script src="js/ui/ui.js?v=1.8"></script>
+  <script src="js/ui/views/home-import.js?v=1.8"></script>
+  <script src="js/ui/views/mixer.js?v=1.8"></script>
+  <script src="js/ui/views/arrange.js?v=1.8"></script>
+  <script src="js/ui/views/tune.js?v=1.8"></script>
+  <script src="js/ui/views/analysis.js?v=1.8"></script>
+  <script src="js/ui/views/automation.js?v=1.8"></script>
+  <script src="js/ui/views/master.js?v=1.8"></script>
+  <script src="js/ui/views/compare-refs.js?v=1.8"></script>
+  <script src="js/ui/views/export-settings.js?v=1.8"></script>
+  <script src="js/ui/views/plugin.js?v=1.8"></script>
+  <script src="js/ui/views/styles.js?v=1.8"></script>
+  <script src="js/ui/views/album.js?v=1.8"></script>
+  <script src="js/ui/views/notes.js?v=1.8"></script>
+  <script src="js/ui/app.js?v=1.8"></script>
 </body>
 </html>
