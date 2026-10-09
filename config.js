@@ -8,9 +8,13 @@ window.MIXMIND_CONFIG = {
   SUPABASE_ANON_KEY: '', // Project Settings → API → anon public
   BUCKET: 'submissions',
 
-  // Licenciamento (v1.8, OPCIONAL). Vazio = licenciamento desligado (tudo disponível, como antes).
+  // Acesso controlado (v1.8): true = ninguém usa a app sem entrar com uma conta da loja (ecrã de entrada antes de tudo).
+  // Precisa do servidor da loja publicado e do endereço em LICENSE_API. Para abrir a app sem contas: false.
+  EXIGIR_LOGIN: true,
+
+  // Licenciamento (v1.8). Vazio = licenciamento desligado (tudo disponível, como antes).
   // Com a loja instalada (pasta server/), indica o endereço público dela e a chave pública de verificação
   // (Administração → Configurações → Licenciamento → "Chave pública"). A chave pública NÃO é secreta.
-  LICENSE_API: '',        // ex.: 'https://loja.mixmind.example'
+  LICENSE_API: '',        // endereço da loja/servidor, ex.: 'https://loja.mixmind.example'  (sem barra no fim)
   LICENSE_PUBLIC_KEY: '', // SPKI em base64 (MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE…). Se ficar vazia, é obtida e fixada na 1.ª ativação.
 };

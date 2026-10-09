@@ -152,6 +152,28 @@ Migrações numeradas (`001_init.sql`, `002_transfer_reset.sql`) aplicadas no ar
 
 Documentação da API e exemplos: [API-LICENCAS.md](API-LICENCAS.md) e `examples/desktop/` (Node, C++/OpenSSL e JUCE, todos testados contra o servidor).
 
+## 6-A. Acesso controlado à aplicação (login antes de tudo)
+
+Com `EXIGIR_LOGIN: true` no `config.js`, **a app não abre sem entrar com uma conta da loja**. O ecrã de entrada aparece antes de qualquer outra coisa e a app só arranca depois de o servidor aprovar o acesso.
+
+| Situação | O que acontece |
+|---|---|
+| `LICENSE_API` vazio | ecrã “Acesso reservado”: ninguém entra até o servidor estar ligado (para reabrir sem contas: `EXIGIR_LOGIN: false`) |
+| email ou palavra-passe errados | mensagem genérica; limite de tentativas igual ao da loja (5 por email, 20 por IP, 15 min) |
+| email por confirmar | não entra; ligação para reenviar a confirmação |
+| palavra-passe inicial do administrador | não entra até a trocar na loja (Entrar) |
+| 2FA ativa (equipa ou cliente) | pede o código de 6 dígitos |
+| conta suspensa ou bloqueada | não entra; se já estiver dentro, a app fecha na verificação seguinte (a cada 6 h e ao reabrir) |
+| equipa (Administrador principal, Financeiro, Suporte) | acesso completo, sem licença |
+| cliente com licença válida | a licença é **ativada automaticamente neste computador** (um por licença); tudo disponível |
+| licença ativa noutro computador | ecrã com o computador ocupado: desativar lá (app ou área de cliente) ou continuar em demonstração |
+| cliente sem licença | entra em demonstração (exportação limitada, regras da administração) |
+| sem internet | abre se a licença deste computador já tiver comprovativo assinado válido (equipa: até 7 dias desde a última confirmação) |
+
+- A sessão da app é um **token próprio** (`/api/v1/app/*`, cabeçalho `Authorization: Bearer`, sem cookies), guardado neste navegador; o servidor só guarda o hash. “Sair” revoga-a no servidor. As sessões da app aparecem em Perfil e segurança → Sessões ativas.
+- **Nota:** com o acesso controlado ligado, suspender o login de um cliente também o impede de abrir a app (a licença não é revogada e volta a funcionar quando o acesso for reposto).
+- Limitação honesta: numa app que corre no navegador, quem altere o código consegue saltar o ecrã de entrada. O que é protegido a sério está no servidor (contas, emissão de licenças) e nos comprovativos assinados.
+
 ## 7. Segurança
 
 - **Palavras-passe e tokens:**
@@ -180,11 +202,14 @@ Documentação da API e exemplos: [API-LICENCAS.md](API-LICENCAS.md) e `examples
 
 ## 8. Instalação (produção)
 
+Guia passo a passo para pôr o servidor online (VPS ou Render): [PUBLICAR-SERVIDOR.md](PUBLICAR-SERVIDOR.md).
+
+
 Requisitos: Node **22.13+** (`node:sqlite`), HTTPS e um disco persistente para `DATA_DIR`.
 
 ```bash
 # 1. no servidor (VPS) ou num serviço tipo Render com disco persistente
-git clone … && cd Mixmastermysong
+git clone … && cd mixmasterming
 cp server/.env.example server/.env      # ou variáveis de ambiente no painel do alojamento
 # 2. edita: APP_MODE=production, PUBLIC_URL=https://loja…, SECRET_KEY (48+ caracteres aleatórios),
 #    ADMIN_EMAIL e ADMIN_INITIAL_PASSWORD (temporária), EMAIL_PROVIDER/EMAIL_API_KEY/EMAIL_FROM, TRUST_PROXY=1 atrás de proxy
@@ -218,7 +243,7 @@ npm run loja                              # arranca em PORT (8790); põe atrás 
 - [ ] Textos legais (termos, privacidade, reembolsos) revistos por jurista, com os campos “[a preencher]” (responsável, morada, contactos, lei aplicável); validar e publicar.
 - [ ] Email transacional: Resend ou Postmark, domínio verificado (SPF/DKIM), `EMAIL_FROM`.
 - [ ] Contactos de suporte (email/URL) em Configurações.
-- [ ] `config.js` da app com `LICENSE_API` e `LICENSE_PUBLIC_KEY`; `CORS_ORIGINS` se a app tiver outro domínio além de `APP_URL`.
+- [ ] `config.js` da app com `LICENSE_API` e `LICENSE_PUBLIC_KEY` (com `EXIGIR_LOGIN: true` a app fica fechada até isto estar feito); `CORS_ORIGINS` se a app tiver outro domínio além de `APP_URL`.
 - [ ] Versão publicada em Configurações → Versões (com a ligação da app; instaladores só se existirem).
 - [ ] Cópias de segurança automáticas (cron com `npm run loja:backup` + envio cifrado para fora).
 

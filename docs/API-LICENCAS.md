@@ -67,6 +67,18 @@ Pedido: `{ "key": "…", "machineId": "…", "appVersion": "1.8.0" }`
 ### `POST /api/v1/licenses/deactivate`
 Pedido: `{ "key": "…", "machineId": "…" }`. Resposta: `{ "ok": true }`, ou `{ "ok": true, "already": true }` se não havia computador ativo. Só o computador ativo se pode desativar a si próprio (`403 OUTRA_MAQUINA`). O cliente também pode desativar na área de cliente e o suporte na administração.
 
+### Acesso à aplicação (login antes de tudo)
+`POST /api/v1/app/login`
+```json
+{ "email": "…", "password": "…", "code": "123456 (só com 2FA)", "machineId": "web-…", "machineName": "Windows · Chrome", "platform": "Windows", "appVersion": "1.8" }
+```
+Resposta: `{ "token": "…", "user": { "name", "email", "role", "staff" }, "access": { "mode": "staff" | "licensed" | "other_machine" | "demo", … }, "store", "demo", "checkDays" }`.
+Com `licensed`, `access` traz `key` e o comprovativo `token` (a licença já foi ativada neste computador). Com `other_machine`, traz a lista `devices`.
+Erros: `CREDENCIAIS` 401 · `BLOQUEIO_TEMPORARIO` 429 · `CONTA_SUSPENSA`/`CONTA_BLOQUEADA` 403 · `EMAIL_POR_CONFIRMAR` 403 · `TROCA_PALAVRA_PASSE` 403 · `MFA_OBRIGATORIA` 403 · `MFA_NECESSARIO`/`MFA_CODIGO` 401.
+
+`POST /api/v1/app/session` (cabeçalho `Authorization: Bearer <token>`, corpo com `machineId`) → `{ user, access, … }` atualizados. `401 SEM_SESSAO` = entrar de novo.
+`POST /api/v1/app/logout` (Bearer) → revoga a sessão.
+
 ## Comprovativo (`token`)
 
 `MMX1.<payload>.<assinatura>`. A assinatura é ECDSA P-256 / SHA-256 sobre os bytes ASCII de `"MMX1." + payload`, no formato r‖s com 64 bytes (IEEE-P1363), em base64url.

@@ -17,10 +17,12 @@ Esta é a **versão compacta**: o mesmo código da versão completa, agrupado em
 | `server/public/` | páginas da loja |
 | `server/migrations/`, `server/.env.example` | base de dados e configuração (sem segredos) |
 | `server/bin/backup.mjs`, `server/bin/seed-demo.mjs` | cópias de segurança e dados de demonstração |
-| `docs/` | instalação, segurança, pagamentos, API de licenças e **lista do que falta configurar** |
+| `docs/` | **PUBLICAR-SERVIDOR.md** (pôr o login online), instalação, segurança, pagamentos, API de licenças e lista do que falta configurar |
+| `Dockerfile`, `render.yaml` | publicar o servidor (Render ou qualquer serviço com Docker) |
 
 ## Publicar
-- **App:** GitHub Pages (o workflow `.github/workflows/pages.yml` publica tudo exceto `server/`). Sem `LICENSE_API` no `config.js`, funciona como antes, sem licenças.
+- **App:** GitHub Pages (o workflow `.github/workflows/pages.yml` publica tudo exceto `server/`). Com `EXIGIR_LOGIN: true` (por omissão) a app **só abre depois de entrar com uma conta** — e fica em “Acesso reservado” até indicares o servidor em `LICENSE_API`. Para abrir sem contas: `EXIGIR_LOGIN: false`.
+- **Login, contas e licenças:** passo a passo em `docs/PUBLICAR-SERVIDOR.md`.
 - **Loja:** precisa de um servidor Node com HTTPS (VPS, Render…). `npm run loja` com as variáveis de `server/.env.example`. A palavra-passe inicial do administrador define-se **só** no ambiente do servidor (`ADMIN_INITIAL_PASSWORD`), troca-se no 1.º acesso e depois apaga-se. Ver `docs/LICENCIAMENTO.md`.
 
 © MIXMIND by Piradex · BeatFreak Studio

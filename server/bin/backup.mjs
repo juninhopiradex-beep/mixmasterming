@@ -25,7 +25,7 @@ function loadConfig(overrides = {}) {
     test: mode === "test",
     port: +(env.PORT || 8790),
     publicUrl: (env.PUBLIC_URL || `http://localhost:${env.PORT || 8790}`).replace(/\/+$/, ""),
-    appUrl: (env.APP_URL || "https://juninhopiradex-beep.github.io/Mixmastermysong/").trim(),
+    appUrl: (env.APP_URL || "https://juninhopiradex-beep.github.io/mixmasterming/").trim(),
     corsOrigins: (env.CORS_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
     dataDir: path.resolve(env.DATA_DIR || path.join(ROOT, "data")),
     secretKey: env.SECRET_KEY || "",

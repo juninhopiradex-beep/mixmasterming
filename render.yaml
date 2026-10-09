@@ -1,0 +1,34 @@
+# Render Blueprint — servidor da loja MIXMIND com disco persistente (base de dados, comprovativos, chave das licenças)
+services:
+  - type: web
+    name: mixmind-loja
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/public/store
+    disk:
+      name: dados
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: APP_MODE
+        value: production
+      - key: DATA_DIR
+        value: /data
+      - key: TRUST_PROXY
+        value: "1"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PUBLIC_URL
+        sync: false
+      - key: APP_URL
+        value: https://juninhopiradex-beep.github.io/mixmasterming/
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_INITIAL_PASSWORD
+        sync: false
+      - key: EMAIL_PROVIDER
+        value: outbox
+      - key: EMAIL_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false

@@ -27,7 +27,7 @@ function loadConfig(overrides = {}) {
     test: mode === "test",
     port: +(env.PORT || 8790),
     publicUrl: (env.PUBLIC_URL || `http://localhost:${env.PORT || 8790}`).replace(/\/+$/, ""),
-    appUrl: (env.APP_URL || "https://juninhopiradex-beep.github.io/Mixmastermysong/").trim(),
+    appUrl: (env.APP_URL || "https://juninhopiradex-beep.github.io/mixmasterming/").trim(),
     corsOrigins: (env.CORS_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
     dataDir: path.resolve(env.DATA_DIR || path.join(ROOT, "data")),
     secretKey: env.SECRET_KEY || "",
@@ -799,6 +799,34 @@ function createCustomer(ctx2, { name, email, password, country }) {
   ctx2.db.run("INSERT INTO users (id, email, name, country, password_hash, role, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)", id, email, name, country || null, password !== void 0 ? hashPassword(password) : null, "customer", "pending", now, now);
   return ctx2.db.get("SELECT * FROM users WHERE id = ?", id);
 }
+function authenticate(ctx2, req, emailIn, password) {
+  const email = str(emailIn, 254).toLowerCase(), S = getSetting(ctx2, "security"), now = ctx2.now();
+  const since = now - S.lockMinutes * 6e4;
+  const fails = (k) => ctx2.db.get("SELECT COUNT(*) n FROM login_attempts WHERE key = ? AND at > ? AND ok = 0", k, since).n;
+  if (fails("e:" + email) >= S.loginMaxAttempts || fails("i:" + req.ip) >= S.loginMaxAttempts * 4) fail(429, `Demasiadas tentativas. Tenta novamente dentro de ${S.lockMinutes} minutos ou recupera a palavra-passe.`, "BLOQUEIO_TEMPORARIO");
+  const u = ctx2.db.get("SELECT * FROM users WHERE email = ?", email);
+  const ok = u && u.password_hash && verifyPassword(String(password || ""), u.password_hash);
+  const note = (good) => {
+    ctx2.db.run("INSERT INTO login_attempts VALUES (?,?,?)", "e:" + email, now, good ? 1 : 0);
+    ctx2.db.run("INSERT INTO login_attempts VALUES (?,?,?)", "i:" + req.ip, now, good ? 1 : 0);
+  };
+  if (!ok) {
+    if (!u) verifyPassword("x", null);
+    note(false);
+    fail(401, "Email ou palavra-passe incorretos.", "CREDENCIAIS");
+  }
+  if (u.status === "blocked") {
+    note(false);
+    fail(403, "Esta conta está bloqueada. Contacta o suporte.", "CONTA_BLOQUEADA");
+  }
+  if (u.status === "suspended") {
+    note(false);
+    fail(403, "O acesso a esta conta está suspenso. Contacta o suporte.", "CONTA_SUSPENSA");
+  }
+  note(true);
+  ctx2.db.run("UPDATE users SET last_login_at = ? WHERE id = ?", now, u.id);
+  return u;
+}
 var meOf = (ctx2, req) => req.user ? { user: safeUser(req.user), mfaPending: !req.session.mfa_ok, perms: req.user.role === "customer" ? [] : permsOf(req.user.role), roleLabel: ROLES[req.user.role] || "Cliente", require2fa: req.user.role !== "customer" && getSetting(ctx2, "security").require2faForStaff && !req.user.totp_enabled } : { user: null };
 function register(r, ctx2) {
   r.get("/api/auth/me", (req) => meOf(ctx2, req));
@@ -811,32 +839,8 @@ function register(r, ctx2) {
     return { user: safeUser(u) };
   });
   r.post("/api/auth/login", (req, res) => {
-    const email = str(req.body.email, 254).toLowerCase(), S = getSetting(ctx2, "security"), now = ctx2.now();
-    const since = now - S.lockMinutes * 6e4;
-    const fails = (k) => ctx2.db.get("SELECT COUNT(*) n FROM login_attempts WHERE key = ? AND at > ? AND ok = 0", k, since).n;
-    if (fails("e:" + email) >= S.loginMaxAttempts || fails("i:" + req.ip) >= S.loginMaxAttempts * 4) fail(429, `Demasiadas tentativas. Tenta novamente dentro de ${S.lockMinutes} minutos ou recupera a palavra-passe.`, "BLOQUEIO_TEMPORARIO");
-    const u = ctx2.db.get("SELECT * FROM users WHERE email = ?", email);
-    const ok = u && u.password_hash && verifyPassword(String(req.body.password || ""), u.password_hash);
-    const note = (good) => {
-      ctx2.db.run("INSERT INTO login_attempts VALUES (?,?,?)", "e:" + email, now, good ? 1 : 0);
-      ctx2.db.run("INSERT INTO login_attempts VALUES (?,?,?)", "i:" + req.ip, now, good ? 1 : 0);
-    };
-    if (!ok) {
-      if (!u) verifyPassword("x", null);
-      note(false);
-      fail(401, "Email ou palavra-passe incorretos.", "CREDENCIAIS");
-    }
-    if (u.status === "blocked") {
-      note(false);
-      fail(403, "Esta conta está bloqueada. Contacta o suporte.", "CONTA_BLOQUEADA");
-    }
-    if (u.status === "suspended") {
-      note(false);
-      fail(403, "O acesso a esta conta está suspenso. Contacta o suporte.", "CONTA_SUSPENSA");
-    }
-    note(true);
+    const u = authenticate(ctx2, req, req.body.email, req.body.password);
     const needMfa = u.role !== "customer" && !!u.totp_enabled;
-    ctx2.db.run("UPDATE users SET last_login_at = ? WHERE id = ?", now, u.id);
     res.setHeader("Set-Cookie", sessionCookie(ctx2, createSession(ctx2, u, req, !needMfa)));
     if (u.role !== "customer") audit(ctx2, { ...u, ip: req.ip }, "staff.login", ["user", u.id], needMfa ? "aguarda 2FA" : null);
     return { user: safeUser(u), mfaPending: needMfa, mustChangePassword: !!u.must_change_password };
@@ -2276,6 +2280,88 @@ function register5(r, ctx2) {
   });
 }
 
+// server/src/routes/app.js
+var TYPE_ORDER = { perpetual: 0, subscription: 1, gift: 2, demo: 3 };
+function accessFor(ctx2, u, m, ip) {
+  const demo = getSetting(ctx2, "demo");
+  if (u.role !== "customer") return { mode: "staff", label: "Conta da equipa" };
+  if (!m.machineId || String(m.machineId).length < 8) fail(400, "Identificador do computador inválido.", "MAQUINA_INVALIDA");
+  const lics = ctx2.db.all("SELECT * FROM licenses WHERE user_id = ? AND status IN ('active','expired','suspended') ORDER BY issued_at", u.id).sort((a, b) => (TYPE_ORDER[a.type] ?? 9) - (TYPE_ORDER[b.type] ?? 9) || (b.expires_at || 9e15) - (a.expires_at || 9e15));
+  const usable = lics.filter((l) => licenseUsable(ctx2, l).ok);
+  const mh = machineHash(ctx2, m.machineId);
+  const dev = (l) => ctx2.db.get("SELECT * FROM devices WHERE license_id = ? AND deactivated_at IS NULL", l.id);
+  for (const l of usable) {
+    const d = dev(l);
+    if (d && d.machine_hash === mh) {
+      const v = validate(ctx2, { key: l.key, machineId: m.machineId, appVersion: m.appVersion });
+      if (v.ok) return { mode: "licensed", key: l.key, token: v.token, license: v.license };
+    }
+  }
+  const problems = [];
+  for (const l of usable) {
+    if (dev(l)) continue;
+    try {
+      const a = activate(ctx2, { key: l.key, machineId: m.machineId, name: m.machineName, platform: m.platform, appVersion: m.appVersion }, ip);
+      return { mode: "licensed", key: l.key, token: a.token, license: a.license, activatedNow: !a.reused };
+    } catch (e) {
+      problems.push(e.message);
+    }
+  }
+  const elsewhere = usable.map((l) => ({ l, d: dev(l) })).filter((x) => x.d);
+  if (elsewhere.length) return { mode: "other_machine", demo, problems, devices: elsewhere.map(({ l, d }) => ({ license: publicLicense(l), name: d.name, platform: d.platform, lastSeen: d.last_seen_at })) };
+  const reason = !lics.length ? "Ainda não tens uma licença." : problems[0] || licenseUsable(ctx2, lics[lics.length - 1]).msg;
+  return { mode: "demo", demo, reason, licenses: lics.map(publicLicense) };
+}
+function register6(r, ctx2) {
+  const db = ctx2.db;
+  const machineOf = (b) => ({ machineId: str(b.machineId, 200), machineName: str(b.machineName, 80), platform: str(b.platform, 40), appVersion: str(b.appVersion, 20) });
+  const sessionOf = (req) => {
+    const h = String(req.headers.authorization || ""), tok2 = h.startsWith("Bearer ") ? h.slice(7).trim() : "";
+    if (!tok2) fail(401, "Sessão em falta. Entra de novo.", "SEM_SESSAO");
+    const s = db.get("SELECT * FROM sessions WHERE id = ? AND kind = 'app' AND revoked_at IS NULL AND expires_at > ?", sha256(tok2), ctx2.now());
+    if (!s) fail(401, "A sessão terminou. Entra de novo.", "SEM_SESSAO");
+    const u = db.get("SELECT * FROM users WHERE id = ?", s.user_id);
+    if (!u || u.status === "blocked" || u.status === "suspended") {
+      db.run("UPDATE sessions SET revoked_at = ? WHERE id = ?", ctx2.now(), s.id);
+      fail(403, u && u.status === "blocked" ? "Esta conta está bloqueada. Contacta o suporte." : "O acesso a esta conta está suspenso. Contacta o suporte.", u && u.status === "blocked" ? "CONTA_BLOQUEADA" : "CONTA_SUSPENSA");
+    }
+    db.run("UPDATE sessions SET last_seen_at = ? WHERE id = ?", ctx2.now(), s.id);
+    return { s, u };
+  };
+  const userOut = (u) => ({ name: u.name, email: u.email, role: u.role, staff: u.role !== "customer", totp: !!u.totp_enabled });
+  const extra = () => ({ store: ctx2.cfg.publicUrl, demo: getSetting(ctx2, "demo"), checkDays: getSetting(ctx2, "licensing").checkDays });
+  r.post("/api/v1/app/login", (req) => {
+    const b = req.body, m = machineOf(b);
+    const u = authenticate(ctx2, req, b.email, b.password);
+    if (u.must_change_password) fail(403, "Tens de alterar a palavra-passe inicial antes de entrares. Faz isso na loja (Entrar) e volta.", "TROCA_PALAVRA_PASSE");
+    if (u.role === "customer" && !u.email_verified_at) fail(403, "Confirma primeiro o teu email (enviámos uma ligação quando criaste a conta).", "EMAIL_POR_CONFIRMAR");
+    if (u.role !== "customer" && getSetting(ctx2, "security").require2faForStaff && !u.totp_enabled) fail(403, "A verificação em dois passos é obrigatória para a equipa. Ativa-a na loja (A minha segurança).", "MFA_OBRIGATORIA");
+    if (u.totp_enabled) {
+      const code = str(b.code, 10);
+      if (!code) fail(401, "Introduz o código de 6 dígitos da aplicação de autenticação.", "MFA_NECESSARIO");
+      const S = getSetting(ctx2, "security"), now2 = ctx2.now();
+      if (db.get("SELECT COUNT(*) n FROM login_attempts WHERE key = ? AND at > ? AND ok = 0", "m:" + u.id, now2 - S.lockMinutes * 6e4).n >= S.loginMaxAttempts) fail(429, "Demasiadas tentativas de código.", "BLOQUEIO_TEMPORARIO");
+      const ok = verifyTotp(ctx2.cipher.dec(u.totp_secret), code, now2);
+      db.run("INSERT INTO login_attempts VALUES (?,?,?)", "m:" + u.id, now2, ok ? 1 : 0);
+      if (!ok) fail(401, "Código inválido.", "MFA_CODIGO");
+    }
+    const access = accessFor(ctx2, u, m, req.ip);
+    const token2 = randomToken(32), now = ctx2.now();
+    db.run("INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen_at, ip, ua, mfa_ok, kind, machine) VALUES (?,?,?,?,?,?,?,1,'app',?)", sha256(token2), u.id, now, now + ctx2.cfg.sessionDays * 864e5, now, req.ip, ("App MIXMIND · " + (m.machineName || m.platform || "computador")).slice(0, 200), m.machineId ? sha256("m:" + m.machineId).slice(0, 16) : null);
+    if (u.role !== "customer") audit(ctx2, { ...u, ip: req.ip }, "staff.app_login", ["user", u.id], m.machineName || null);
+    return { token: token2, user: userOut(u), access, ...extra() };
+  });
+  r.post("/api/v1/app/session", (req) => {
+    const { u } = sessionOf(req), m = machineOf(req.body);
+    return { user: userOut(u), access: accessFor(ctx2, u, m, req.ip), ...extra() };
+  });
+  r.post("/api/v1/app/logout", (req) => {
+    const { s } = sessionOf(req);
+    db.run("UPDATE sessions SET revoked_at = ? WHERE id = ?", ctx2.now(), s.id);
+    return { ok: true };
+  });
+}
+
 // server/src/server.js
 function createServer(ctx2) {
   const r = router();
@@ -2296,6 +2382,7 @@ function createServer(ctx2) {
   register3(r, ctx2);
   register4(r, ctx2);
   register5(r, ctx2);
+  register6(r, ctx2);
   const publicDir = path7.join(ROOT, "public");
   const licOrigins = () => new Set([...ctx2.cfg.corsOrigins, (() => {
     try {
@@ -2317,7 +2404,7 @@ function createServer(ctx2) {
         if (o && licOrigins().has(o)) {
           res.setHeader("Access-Control-Allow-Origin", o);
           res.setHeader("Vary", "Origin");
-          res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+          res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
           res.setHeader("Access-Control-Allow-Methods", "GET, POST");
         }
         if (req.method === "OPTIONS") return send(res, 204, "");
@@ -2337,7 +2424,7 @@ function createServer(ctx2) {
       req.params = m.params;
       const tok2 = parseCookies(req.headers.cookie).mm_s;
       if (tok2) {
-        const s = ctx2.db.get("SELECT * FROM sessions WHERE id = ? AND revoked_at IS NULL AND expires_at > ?", sha256(tok2), Date.now());
+        const s = ctx2.db.get("SELECT * FROM sessions WHERE id = ? AND kind = 'web' AND revoked_at IS NULL AND expires_at > ?", sha256(tok2), Date.now());
         if (s) {
           const u = ctx2.db.get("SELECT * FROM users WHERE id = ?", s.user_id);
           if (u && u.status !== "blocked" && u.status !== "suspended") {
