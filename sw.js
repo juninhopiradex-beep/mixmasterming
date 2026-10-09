@@ -23,7 +23,7 @@ self.addEventListener('activate', (e) => {
 });
 self.addEventListener('fetch', (e) => {
   const req = e.request, url = new URL(req.url);
-  if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+  if (req.method !== 'GET' || url.origin !== self.location.origin || req.cache === 'no-store') return; // no-store: ex. acessos.json (sempre da rede)
   if (req.mode === 'navigate' || url.pathname.endsWith('.json')) { // páginas e dados (ex.: biblioteca de estilos): rede primeiro
     const key = req.mode === 'navigate' ? 'index.html' : req;
     e.respondWith(fetch(req).then((r) => { if (r.ok) { const cp = r.clone(); caches.open(CACHE).then((c) => c.put(key, cp)); } return r; }).catch(() => caches.match(key)));

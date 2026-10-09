@@ -154,7 +154,12 @@ Documentação da API e exemplos: [API-LICENCAS.md](API-LICENCAS.md) e `examples
 
 ## 6-A. Acesso controlado à aplicação (login antes de tudo)
 
-Com `EXIGIR_LOGIN: true` no `config.js`, **a app não abre sem entrar com uma conta da loja**. O ecrã de entrada aparece antes de qualquer outra coisa e a app só arranca depois de o servidor aprovar o acesso.
+Com `EXIGIR_LOGIN: true` no `config.js`, **a app não abre sem entrar**. Há dois modos:
+
+- **Modo GitHub** (`LICENSE_API` vazio — funciona já, sem servidor): quem pode entrar está em `acessos.json`, no próprio repositório. Os acessos geram-se em `acessos.html` (nome, email, perfil Administrador/Utilizador, acesso Completo/Demonstração, validade opcional); a palavra-passe é convertida no navegador num hash PBKDF2-SHA256 de 600 000 iterações com sal próprio — o ficheiro só tem hashes. Desativar, remover ou mudar a validade = editar `acessos.json` no GitHub (tem efeito na abertura seguinte da app, até ~10 min de cache). Sem rede, um acesso já confirmado abre durante 7 dias. Após 5 erros seguidos, espera obrigatória crescente. Limites: o ficheiro é público (usa palavras-passe longas e únicas) e não há licenças por computador nem pagamentos — isso é o modo servidor.
+- **Modo servidor** (`LICENSE_API` com o endereço da loja): contas, licenças e pagamentos reais, como descrito abaixo.
+
+No modo servidor, **a app não abre sem entrar com uma conta da loja**. O ecrã de entrada aparece antes de qualquer outra coisa e a app só arranca depois de o servidor aprovar o acesso.
 
 | Situação | O que acontece |
 |---|---|

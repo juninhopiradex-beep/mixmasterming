@@ -9,6 +9,7 @@ Esta é a **versão compacta**: o mesmo código da versão completa, agrupado em
 | Ficheiro | O quê |
 |---|---|
 | `index.html`, `mixmind.js`, `mixmind.css` | a aplicação (GitHub Pages) |
+| `acessos.json`, `acessos.html` | **quem pode entrar na app** sem servidor (modo GitHub): gera os acessos em acessos.html e cola em acessos.json |
 | `config.js` | configuração editável: Supabase (opcional) e licenças (`LICENSE_API`, `LICENSE_PUBLIC_KEY`) |
 | `sw.js`, `manifest.webmanifest`, `assets/` | app instalável e offline, ícones |
 | `portal.html`, `portal.js`, `supabase/schema.sql` | portal de envio para clientes (opcional) |
@@ -16,7 +17,7 @@ Esta é a **versão compacta**: o mesmo código da versão completa, agrupado em
 | `server/bin/loja.mjs` | loja, área de cliente, administração e API de licenças (Node 22.13+, sem dependências) |
 | `server/public/` | páginas da loja |
 | `server/migrations/`, `server/.env.example` | base de dados e configuração (sem segredos) |
-| `server/bin/backup.mjs`, `server/bin/seed-demo.mjs` | cópias de segurança e dados de demonstração |
+| `server/bin/backup.mjs`, `server/bin/seed-demo.mjs`, `server/bin/beta-hash.mjs` | cópias de segurança, dados de demonstração e acessos de beta testers |
 | `docs/` | **PUBLICAR-SERVIDOR.md** (pôr o login online), instalação, segurança, pagamentos, API de licenças e lista do que falta configurar |
 | `Dockerfile`, `render.yaml` | publicar o servidor (Render ou qualquer serviço com Docker) |
 

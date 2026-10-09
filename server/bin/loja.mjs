@@ -33,6 +33,9 @@ function loadConfig(overrides = {}) {
     secretKey: env.SECRET_KEY || "",
     adminEmail: env.ADMIN_EMAIL || "",
     adminInitialPassword: env.ADMIN_INITIAL_PASSWORD || "",
+    adminResetPassword: env.ADMIN_RESET_PASSWORD || "",
+    adminReset2fa: env.ADMIN_RESET_2FA === "1",
+    betaAccess: env.BETA_ACESSOS || "",
     licenseKeyFile: env.LICENSE_PRIVATE_KEY_FILE || "",
     stripe: { secretKey: env.STRIPE_SECRET_KEY || "", webhookSecret: env.STRIPE_WEBHOOK_SECRET || "", apiBase: (env.STRIPE_API_BASE || "https://api.stripe.com").replace(/\/+$/, "") },
     paypal: { clientId: env.PAYPAL_CLIENT_ID || "", clientSecret: env.PAYPAL_CLIENT_SECRET || "", webhookId: env.PAYPAL_WEBHOOK_ID || "", apiBase: (env.PAYPAL_API_BASE || (mode === "production" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com")).replace(/\/+$/, "") },
@@ -50,8 +53,8 @@ function loadConfig(overrides = {}) {
 }
 
 // server/src/core.js
-import fs4 from "node:fs";
-import path4 from "node:path";
+import fs5 from "node:fs";
+import path5 from "node:path";
 
 // server/src/db.js
 import fs2 from "node:fs";
@@ -285,6 +288,11 @@ function verifyTotp(secretB32, code, t = Date.now()) {
   return [-1, 0, 1].some((w) => safeEqual(totp(secretB32, t + w * 3e4), code));
 }
 
+// server/src/licensing.js
+import fs4 from "node:fs";
+import path4 from "node:path";
+import crypto2 from "node:crypto";
+
 // server/src/http.js
 import fs3 from "node:fs";
 import path3 from "node:path";
@@ -380,177 +388,7 @@ function serveStatic(root, pathname, res, status = 200) {
   return true;
 }
 
-// server/src/core.js
-function createContext(cfg2) {
-  fs4.mkdirSync(cfg2.dataDir, { recursive: true });
-  fs4.mkdirSync(path4.join(cfg2.dataDir, "uploads"), { recursive: true, mode: 448 });
-  const db = openDb(path4.join(cfg2.dataDir, cfg2.test ? "mixmind-test.db" : "mixmind.db"));
-  const ctx2 = { cfg: cfg2, db, cipher: makeCipher(cfg2.secretKey), now: () => Date.now(), log: (...a) => {
-    if (!cfg2.quiet) console.log((/* @__PURE__ */ new Date()).toISOString(), ...a);
-  } };
-  seed(ctx2);
-  return ctx2;
-}
-function seed(ctx2) {
-  const { db, cfg: cfg2 } = ctx2, now = ctx2.now();
-  if (!db.get("SELECT 1 FROM products WHERE id = ?", "mixmind")) db.run("INSERT INTO products VALUES (?, ?, ?)", "mixmind", "MIXMIND by Piradex", 1);
-  if (!db.get("SELECT 1 FROM versions LIMIT 1")) db.run("INSERT INTO versions VALUES (?,?,?,?,?,?,?,?,?,?)", uuid(), "mixmind", "1.8.0", 1, "Loja, contas e licenças; editor de voz; WebAssembly.", cfg2.appUrl, null, null, 1, now);
-  for (const p of PLANS) if (!db.get("SELECT 1 FROM plans WHERE id = ?", p.id)) db.run("INSERT INTO plans (id, name, kind, interval, price_usd_cents, active, sort) VALUES (?,?,?,?,?,1,?)", p.id, p.name, p.kind, p.interval, p.price_usd_cents, p.sort);
-  const ds = defaultSettings(cfg2.test);
-  for (const [k, v] of Object.entries(ds)) if (!db.get("SELECT 1 FROM settings WHERE key = ?", k)) db.run("INSERT INTO settings VALUES (?,?,?,?)", k, JSON.stringify(v), now, "sistema");
-  for (const [k, t] of Object.entries(TEXTS)) if (!db.get("SELECT 1 FROM texts WHERE key = ?", k)) db.run("INSERT INTO texts (key, title, draft, updated_by, updated_at) VALUES (?,?,?,?,?)", k, t.title, t.body, "sistema", now);
-  for (const [k, t] of Object.entries(EMAILS)) if (!db.get("SELECT 1 FROM texts WHERE key = ?", "email:" + k)) db.run("INSERT INTO texts (key, title, draft, published, updated_by, updated_at, published_at, published_by) VALUES (?,?,?,?,?,?,?,?)", "email:" + k, t.title, t.body, t.body, "sistema", now, now, "sistema");
-  if (!db.get("SELECT 1 FROM users WHERE role = 'owner'") && cfg2.adminEmail && cfg2.adminInitialPassword) {
-    db.run(
-      "INSERT INTO users (id, email, name, role, status, email_verified_at, password_hash, must_change_password, created_at, updated_at) VALUES (?,?,?,?,?,?,?,1,?,?)",
-      uuid(),
-      cfg2.adminEmail.toLowerCase(),
-      "Administrador",
-      "owner",
-      "active",
-      now,
-      hashPassword(cfg2.adminInitialPassword),
-      now,
-      now
-    );
-    db.run("INSERT INTO audit_log (at, actor_email, action, target_type, details) VALUES (?,?,?,?,?)", now, "sistema", "admin.bootstrap", "user", "Administrador inicial criado a partir de ADMIN_EMAIL/ADMIN_INITIAL_PASSWORD (troca obrigatória no primeiro acesso).");
-    ctx2.log("Administrador inicial criado para", cfg2.adminEmail, "— troca de palavra-passe obrigatória no primeiro acesso.");
-  }
-}
-var getSetting = (ctx2, k) => {
-  const r = ctx2.db.get("SELECT value FROM settings WHERE key = ?", k);
-  return r ? JSON.parse(r.value) : null;
-};
-var setSetting = (ctx2, k, v, by) => ctx2.db.run("INSERT INTO settings VALUES (?,?,?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by", k, JSON.stringify(v), ctx2.now(), by || null);
-function getText(ctx2, key) {
-  return ctx2.db.get("SELECT * FROM texts WHERE key = ?", key);
-}
-function publicText(ctx2, key) {
-  const t = getText(ctx2, key);
-  if (!t) return null;
-  if (t.published) return { title: t.title, body: t.published, provisional: false, published_at: t.published_at };
-  return ctx2.cfg.test ? { title: t.title, body: t.draft, provisional: true } : { title: t.title, body: null, provisional: true };
-}
-var legalReady = (ctx2) => ["terms", "privacy", "refund"].every((k) => {
-  const t = getText(ctx2, k);
-  return t && t.published;
-});
-var fill = (s, v) => s.replace(/\{\{(\w+)\}\}/g, (_, k) => v[k] === void 0 || v[k] === null ? "" : String(v[k]));
-async function sendEmail(ctx2, to, template, vars) {
-  const t = getText(ctx2, "email:" + template);
-  if (!t) throw new Error("Template inexistente: " + template);
-  const v = { product: "MIXMIND by Piradex", ...vars };
-  const text = fill(t.published || t.draft, v);
-  const m = /^Assunto:\s*(.*)\n+/.exec(text);
-  const subject = m ? m[1].trim() : t.title, body = m ? text.slice(m[0].length) : text;
-  const now = ctx2.now(), E = ctx2.cfg.email;
-  const id = ctx2.db.run("INSERT INTO emails (to_addr, template, subject, body, status, created_at) VALUES (?,?,?,?,?,?)", to, template, subject, body, E.provider === "outbox" ? "test" : "queued", now).lastInsertRowid;
-  if (E.provider === "outbox") return { id, subject, body };
-  try {
-    let r;
-    if (E.provider === "resend") r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: "Bearer " + E.apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ from: E.from, to: [to], subject, text: body }) });
-    else if (E.provider === "postmark") r = await fetch("https://api.postmarkapp.com/email", { method: "POST", headers: { "X-Postmark-Server-Token": E.apiKey, "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ From: E.from, To: to, Subject: subject, TextBody: body, MessageStream: "outbound" }) });
-    else throw new Error("EMAIL_PROVIDER desconhecido: " + E.provider);
-    if (!r.ok) throw new Error("HTTP " + r.status + " " + (await r.text()).slice(0, 200));
-    ctx2.db.run("UPDATE emails SET status = 'sent', sent_at = ? WHERE id = ?", ctx2.now(), id);
-  } catch (e) {
-    ctx2.db.run("UPDATE emails SET status = 'failed', error = ? WHERE id = ?", String(e.message).slice(0, 500), id);
-    ctx2.log("Email falhou", template, to, e.message);
-  }
-  return { id, subject, body };
-}
-var mail = (ctx2, to, template, vars) => {
-  sendEmail(ctx2, to, template, vars).catch((e) => ctx2.log("Email", e.message));
-};
-function audit(ctx2, actor, action, target, details, reason) {
-  ctx2.db.run(
-    "INSERT INTO audit_log (at, actor_id, actor_email, action, target_type, target_id, reason, details, ip) VALUES (?,?,?,?,?,?,?,?,?)",
-    ctx2.now(),
-    actor && actor.id || null,
-    actor && actor.email || (typeof actor === "string" ? actor : null),
-    action,
-    target && target[0] || null,
-    target && target[1] || null,
-    reason || null,
-    details ? typeof details === "string" ? details : JSON.stringify(details) : null,
-    actor && actor.ip || null
-  );
-}
-var ROLES = { owner: "Administrador principal", finance: "Financeiro", support: "Suporte" };
-var P = {
-  "dashboard.view": ["owner", "finance", "support"],
-  "customers.view": ["owner", "finance", "support"],
-  "customers.edit": ["owner", "support"],
-  "customers.suspend": ["owner", "support"],
-  "customers.block": ["owner"],
-  "orders.view": ["owner", "finance", "support"],
-  "payments.validate": ["owner", "finance"],
-  "payments.refund": ["owner", "finance"],
-  "payments.events": ["owner", "finance"],
-  "licenses.view": ["owner", "finance", "support"],
-  "licenses.manage": ["owner", "support"],
-  // suspender/reativar, desativar computador, mudança de computador
-  "licenses.revoke": ["owner"],
-  "licenses.issue": ["owner"],
-  // ofertas, lotes, demonstrações
-  "subscriptions.manage": ["owner", "finance"],
-  // prolongar, aprovar renovações, cancelar renovação
-  "settings.view": ["owner", "finance"],
-  "settings.edit": ["owner"],
-  "texts.edit": ["owner"],
-  "texts.publish": ["owner"],
-  "staff.manage": ["owner"],
-  "audit.view": ["owner"],
-  "emails.view": ["owner", "support"]
-};
-var can = (user, perm) => !!user && (P[perm] || []).includes(user.role);
-var permsOf = (role) => Object.keys(P).filter((k) => P[k].includes(role));
-function need(user, perm) {
-  if (!can(user, perm)) fail(403, "Não tens permissão para esta operação.", "SEM_PERMISSAO");
-}
-function createSession(ctx2, user, req, mfaOk) {
-  const token2 = randomToken(32), now = ctx2.now();
-  ctx2.db.run("INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen_at, ip, ua, mfa_ok) VALUES (?,?,?,?,?,?,?,?)", sha256(token2), user.id, now, now + ctx2.cfg.sessionDays * 864e5, now, req.ip, String(req.headers["user-agent"] || "").slice(0, 200), mfaOk ? 1 : 0);
-  return token2;
-}
-function sessionCookie(ctx2, token2, maxAgeS) {
-  return `mm_s=${token2}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeS === void 0 ? ctx2.cfg.sessionDays * 86400 : maxAgeS}${ctx2.cfg.test ? "" : "; Secure"}`;
-}
-var fmtMoney = (cents, cur) => {
-  const v = cents / 100;
-  const s = v.toLocaleString("pt-PT", { minimumFractionDigits: cur === "AOA" ? 0 : 2, maximumFractionDigits: cur === "AOA" ? 0 : 2 });
-  return cur === "USD" ? `US$${s}` : cur === "EUR" ? `${s} €` : `${s} Kz`;
-};
-function annualSaving(ctx2) {
-  const m = ctx2.db.get("SELECT price_usd_cents p FROM plans WHERE id = 'monthly'"), a = ctx2.db.get("SELECT price_usd_cents p FROM plans WHERE id = 'annual'");
-  if (!m || !a) return null;
-  return Math.round((1 - a.p / (12 * m.p)) * 1e3) / 10;
-}
-function quote(ctx2, plan, method, country) {
-  const cur = method === "bank_pt" ? getSetting(ctx2, "bank_pt").currency || "EUR" : method === "bank_ao" ? getSetting(ctx2, "bank_ao").currency || "AOA" : "USD";
-  const rates = getSetting(ctx2, "currencies").rates || {};
-  let fx = 1;
-  if (cur !== "USD") {
-    fx = rates[cur] && rates[cur].rate;
-    if (!fx || fx <= 0) fail(400, `Câmbio USD→${cur} ainda não configurado. Escolhe outro método de pagamento.`, "CAMBIO_EM_FALTA");
-  }
-  const round = cur === "AOA" ? 100 : 1;
-  const base = Math.round(plan.price_usd_cents * fx / round) * round;
-  const tx = getSetting(ctx2, "taxes"), rule = (tx.rules || []).find((r) => r.country === country);
-  const rate = rule ? +rule.rate : 0;
-  const tax = tx.mode === "included" ? 0 : Math.round(base * rate / 100 / round) * round;
-  return { currency: cur, fx, net_cents: base, tax_cents: tax, tax_rate: rate, tax_label: rule ? rule.label : null, tax_mode: tx.mode, total_cents: base + tax, usd_cents: plan.price_usd_cents };
-}
-
-// server/src/server.js
-import http from "node:http";
-import path7 from "node:path";
-import { URL } from "node:url";
-
 // server/src/licensing.js
-import fs5 from "node:fs";
-import path5 from "node:path";
-import crypto2 from "node:crypto";
 var CROCK = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 function newKey() {
   const b = crypto2.randomBytes(13);
@@ -562,13 +400,13 @@ function newKey() {
 var normKey = (k) => String(k || "").toUpperCase().replace(/[^0-9A-Z]/g, "").replace(/O/g, "0").replace(/[IL]/g, "1").replace(/^MMX1/, "MMX1").replace(/^(MMX1)(.{5})(.{5})(.{5})(.{5})$/, "$1-$2-$3-$4-$5");
 function signingKeys(ctx2) {
   if (ctx2._keys) return ctx2._keys;
-  const file = ctx2.cfg.licenseKeyFile || path5.join(ctx2.cfg.dataDir, "keys", "license-private.pem");
+  const file = ctx2.cfg.licenseKeyFile || path4.join(ctx2.cfg.dataDir, "keys", "license-private.pem");
   let pem;
-  if (fs5.existsSync(file)) pem = fs5.readFileSync(file, "utf8");
+  if (fs4.existsSync(file)) pem = fs4.readFileSync(file, "utf8");
   else {
-    fs5.mkdirSync(path5.dirname(file), { recursive: true, mode: 448 });
+    fs4.mkdirSync(path4.dirname(file), { recursive: true, mode: 448 });
     pem = crypto2.generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ type: "pkcs8", format: "pem" });
-    fs5.writeFileSync(file, pem, { mode: 384 });
+    fs4.writeFileSync(file, pem, { mode: 384 });
     ctx2.log("Par de chaves de licenças criado em", file, "(guarda uma cópia de segurança; nunca a publiques)");
   }
   const priv = crypto2.createPrivateKey(pem), pub = crypto2.createPublicKey(priv);
@@ -708,6 +546,262 @@ function setLicenseStatus(ctx2, lic, status, actor, reason) {
   licEvent(ctx2, lic.id, actor, "status_" + status, reason);
   audit(ctx2, actor, "license." + status, ["license", lic.id], { key4: lic.key.slice(-4) }, reason);
 }
+
+// server/src/core.js
+function createContext(cfg2) {
+  fs5.mkdirSync(cfg2.dataDir, { recursive: true });
+  fs5.mkdirSync(path5.join(cfg2.dataDir, "uploads"), { recursive: true, mode: 448 });
+  const db = openDb(path5.join(cfg2.dataDir, cfg2.test ? "mixmind-test.db" : "mixmind.db"));
+  const ctx2 = { cfg: cfg2, db, cipher: makeCipher(cfg2.secretKey), now: () => Date.now(), log: (...a) => {
+    if (!cfg2.quiet) console.log((/* @__PURE__ */ new Date()).toISOString(), ...a);
+  } };
+  seed(ctx2);
+  return ctx2;
+}
+function seed(ctx2) {
+  const { db, cfg: cfg2 } = ctx2, now = ctx2.now();
+  if (!db.get("SELECT 1 FROM products WHERE id = ?", "mixmind")) db.run("INSERT INTO products VALUES (?, ?, ?)", "mixmind", "MIXMIND by Piradex", 1);
+  if (!db.get("SELECT 1 FROM versions LIMIT 1")) db.run("INSERT INTO versions VALUES (?,?,?,?,?,?,?,?,?,?)", uuid(), "mixmind", "1.8.0", 1, "Loja, contas e licenças; editor de voz; WebAssembly.", cfg2.appUrl, null, null, 1, now);
+  for (const p of PLANS) if (!db.get("SELECT 1 FROM plans WHERE id = ?", p.id)) db.run("INSERT INTO plans (id, name, kind, interval, price_usd_cents, active, sort) VALUES (?,?,?,?,?,1,?)", p.id, p.name, p.kind, p.interval, p.price_usd_cents, p.sort);
+  const ds = defaultSettings(cfg2.test);
+  for (const [k, v] of Object.entries(ds)) if (!db.get("SELECT 1 FROM settings WHERE key = ?", k)) db.run("INSERT INTO settings VALUES (?,?,?,?)", k, JSON.stringify(v), now, "sistema");
+  for (const [k, t] of Object.entries(TEXTS)) if (!db.get("SELECT 1 FROM texts WHERE key = ?", k)) db.run("INSERT INTO texts (key, title, draft, updated_by, updated_at) VALUES (?,?,?,?,?)", k, t.title, t.body, "sistema", now);
+  for (const [k, t] of Object.entries(EMAILS)) if (!db.get("SELECT 1 FROM texts WHERE key = ?", "email:" + k)) db.run("INSERT INTO texts (key, title, draft, published, updated_by, updated_at, published_at, published_by) VALUES (?,?,?,?,?,?,?,?)", "email:" + k, t.title, t.body, t.body, "sistema", now, now, "sistema");
+  if (!db.get("SELECT 1 FROM users WHERE role = 'owner'") && cfg2.adminEmail && cfg2.adminInitialPassword) {
+    db.run(
+      "INSERT INTO users (id, email, name, role, status, email_verified_at, password_hash, must_change_password, created_at, updated_at) VALUES (?,?,?,?,?,?,?,1,?,?)",
+      uuid(),
+      cfg2.adminEmail.toLowerCase(),
+      "Administrador",
+      "owner",
+      "active",
+      now,
+      hashPassword(cfg2.adminInitialPassword),
+      now,
+      now
+    );
+    db.run("INSERT INTO audit_log (at, actor_email, action, target_type, details) VALUES (?,?,?,?,?)", now, "sistema", "admin.bootstrap", "user", "Administrador inicial criado a partir de ADMIN_EMAIL/ADMIN_INITIAL_PASSWORD (troca obrigatória no primeiro acesso).");
+    ctx2.log("Administrador inicial criado para", cfg2.adminEmail, "— troca de palavra-passe obrigatória no primeiro acesso.");
+  }
+  adminReset(ctx2);
+  betaAccounts(ctx2);
+}
+function adminReset(ctx2) {
+  const { db, cfg: cfg2 } = ctx2, pw = cfg2.adminResetPassword, now = ctx2.now();
+  if (!pw) return;
+  const done = getSetting(ctx2, "admin_reset");
+  if (done && done.mark && verifyPassword(pw, done.mark)) return;
+  const email = (cfg2.adminEmail || "").trim().toLowerCase();
+  let u = email && db.get("SELECT * FROM users WHERE email = ? AND role = 'owner'", email) || db.get("SELECT * FROM users WHERE role = 'owner' ORDER BY created_at LIMIT 1");
+  if (!u) {
+    if (!email) {
+      ctx2.log("ADMIN_RESET_PASSWORD ignorada: define também ADMIN_EMAIL.");
+      return;
+    }
+    db.run("INSERT INTO users (id, email, name, role, status, email_verified_at, password_hash, must_change_password, created_at, updated_at) VALUES (?,?,?,?,?,?,?,1,?,?)", uuid(), email, "Administrador", "owner", "active", now, hashPassword(pw), now, now);
+  } else {
+    let to = u.email;
+    if (email && email !== u.email.toLowerCase()) {
+      if (db.get("SELECT 1 FROM users WHERE email = ? AND id <> ?", email, u.id)) ctx2.log("ADMIN_EMAIL já pertence a outra conta — o email do administrador mantém-se", u.email);
+      else to = email;
+    }
+    db.run("UPDATE users SET email = ?, password_hash = ?, must_change_password = 1, status = 'active', status_reason = NULL, updated_at = ? WHERE id = ?", to, hashPassword(pw), now, u.id);
+    if (cfg2.adminReset2fa) db.run("UPDATE users SET totp_enabled = 0, totp_secret = NULL WHERE id = ?", u.id);
+    db.run("UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL", now, u.id);
+    db.run("DELETE FROM login_attempts WHERE key IN (?, ?)", "e:" + to.toLowerCase(), "m:" + u.id);
+  }
+  setSetting(ctx2, "admin_reset", { mark: hashPassword(pw), at: now }, "sistema");
+  db.run("INSERT INTO audit_log (at, actor_email, action, target_type, details) VALUES (?,?,?,?,?)", now, "sistema", "admin.reset", "user", "Acesso do administrador reposto a partir de ADMIN_RESET_PASSWORD" + (cfg2.adminReset2fa ? " (2FA desligado)" : "") + " — troca obrigatória no primeiro acesso.");
+  ctx2.log("Acesso do administrador reposto a partir de ADMIN_RESET_PASSWORD (troca obrigatória no 1.º acesso). Podes apagar ADMIN_RESET_PASSWORD no alojamento.");
+}
+function parseBeta(raw) {
+  const out = [], bad = [];
+  for (const item of String(raw || "").split(/[\s,;]+/).filter(Boolean)) {
+    const m = /^([a-z0-9][a-z0-9._@+-]{2,63}):(scrypt\$\d+\$\d+\$\d+\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+)(?::(\d{4}-\d{2}-\d{2}))?$/i.exec(item);
+    if (!m) {
+      bad.push(item.split(":")[0]);
+      continue;
+    }
+    out.push({ id: m[1].toLowerCase(), hash: m[2], until: m[3] ? Date.parse(m[3] + "T23:59:59Z") : null });
+  }
+  return { list: out, bad };
+}
+function betaAccounts(ctx2) {
+  const { db, cfg: cfg2 } = ctx2, now = ctx2.now();
+  const { list, bad } = parseBeta(cfg2.betaAccess);
+  if (bad.length) ctx2.log("BETA_ACESSOS: entradas ignoradas (formato inválido):", bad.join(", "));
+  const applied = getSetting(ctx2, "beta_applied") || {}, seen = /* @__PURE__ */ new Set();
+  db.tx(() => {
+    for (const e of list) {
+      seen.add(e.id);
+      const mark = sha256("beta:" + e.hash);
+      let u = db.get("SELECT * FROM users WHERE email = ?", e.id);
+      if (u && u.role !== "customer") {
+        ctx2.log('BETA_ACESSOS: "' + e.id + '" é uma conta da equipa — ignorada.');
+        continue;
+      }
+      if (!u) {
+        db.run("INSERT INTO users (id, email, name, role, status, email_verified_at, password_hash, must_change_password, created_at, updated_at) VALUES (?,?,?,?,?,?,?,0,?,?)", uuid(), e.id, "Beta tester " + e.id, "customer", "active", now, e.hash, now, now);
+        u = db.get("SELECT * FROM users WHERE email = ?", e.id);
+        db.run("INSERT INTO audit_log (at, actor_email, action, target_type, target_id, details) VALUES (?,?,?,?,?,?)", now, "sistema", "beta.create", "user", u.id, "Conta beta criada a partir de BETA_ACESSOS: " + e.id);
+      } else if (applied[e.id] !== mark) {
+        db.run("UPDATE users SET password_hash = ?, status = CASE WHEN status = 'blocked' THEN status ELSE 'active' END, status_reason = NULL, email_verified_at = COALESCE(email_verified_at, ?), updated_at = ? WHERE id = ?", e.hash, now, now, u.id);
+        db.run("UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL", now, u.id);
+        db.run("INSERT INTO audit_log (at, actor_email, action, target_type, target_id, details) VALUES (?,?,?,?,?,?)", now, "sistema", "beta.password", "user", u.id, "Palavra-passe beta atualizada a partir de BETA_ACESSOS: " + e.id);
+      } else if (u.status === "suspended" && u.status_reason === "Acesso beta retirado") {
+        db.run("UPDATE users SET status = 'active', status_reason = NULL, updated_at = ? WHERE id = ?", now, u.id);
+      }
+      const lic = db.get("SELECT * FROM licenses WHERE user_id = ? AND note = 'beta' ORDER BY issued_at DESC LIMIT 1", u.id);
+      if (!lic) issueLicense(ctx2, { userId: u.id, type: "gift", expiresAt: e.until, actor: "sistema", note: "beta" });
+      else if ((lic.expires_at || null) !== e.until && lic.status !== "revoked") {
+        db.run("UPDATE licenses SET expires_at = ?, status = CASE WHEN status = 'expired' THEN 'active' ELSE status END WHERE id = ?", e.until, lic.id);
+        licEvent(ctx2, lic.id, "sistema", "beta.validade", { expires: e.until });
+      }
+      applied[e.id] = mark;
+    }
+    for (const id of Object.keys(applied)) {
+      if (seen.has(id)) continue;
+      const u = db.get("SELECT * FROM users WHERE email = ? AND role = 'customer'", id);
+      if (u && u.status !== "blocked") {
+        db.run("UPDATE users SET status = 'suspended', status_reason = 'Acesso beta retirado', updated_at = ? WHERE id = ?", now, u.id);
+        db.run("UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL", now, u.id);
+        db.run("INSERT INTO audit_log (at, actor_email, action, target_type, target_id, details) VALUES (?,?,?,?,?,?)", now, "sistema", "beta.remove", "user", u.id, "Retirado de BETA_ACESSOS: " + id);
+      }
+      delete applied[id];
+    }
+  });
+  setSetting(ctx2, "beta_applied", applied, "sistema");
+  if (list.length) ctx2.log("Beta testers ativos:", list.map((e) => e.id).join(", "));
+}
+var getSetting = (ctx2, k) => {
+  const r = ctx2.db.get("SELECT value FROM settings WHERE key = ?", k);
+  return r ? JSON.parse(r.value) : null;
+};
+var setSetting = (ctx2, k, v, by) => ctx2.db.run("INSERT INTO settings VALUES (?,?,?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by", k, JSON.stringify(v), ctx2.now(), by || null);
+function getText(ctx2, key) {
+  return ctx2.db.get("SELECT * FROM texts WHERE key = ?", key);
+}
+function publicText(ctx2, key) {
+  const t = getText(ctx2, key);
+  if (!t) return null;
+  if (t.published) return { title: t.title, body: t.published, provisional: false, published_at: t.published_at };
+  return ctx2.cfg.test ? { title: t.title, body: t.draft, provisional: true } : { title: t.title, body: null, provisional: true };
+}
+var legalReady = (ctx2) => ["terms", "privacy", "refund"].every((k) => {
+  const t = getText(ctx2, k);
+  return t && t.published;
+});
+var fill = (s, v) => s.replace(/\{\{(\w+)\}\}/g, (_, k) => v[k] === void 0 || v[k] === null ? "" : String(v[k]));
+async function sendEmail(ctx2, to, template, vars) {
+  const t = getText(ctx2, "email:" + template);
+  if (!t) throw new Error("Template inexistente: " + template);
+  const v = { product: "MIXMIND by Piradex", ...vars };
+  const text = fill(t.published || t.draft, v);
+  const m = /^Assunto:\s*(.*)\n+/.exec(text);
+  const subject = m ? m[1].trim() : t.title, body = m ? text.slice(m[0].length) : text;
+  const now = ctx2.now(), E = ctx2.cfg.email;
+  const id = ctx2.db.run("INSERT INTO emails (to_addr, template, subject, body, status, created_at) VALUES (?,?,?,?,?,?)", to, template, subject, body, E.provider === "outbox" ? "test" : "queued", now).lastInsertRowid;
+  if (E.provider === "outbox") return { id, subject, body };
+  try {
+    let r;
+    if (E.provider === "resend") r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: "Bearer " + E.apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ from: E.from, to: [to], subject, text: body }) });
+    else if (E.provider === "postmark") r = await fetch("https://api.postmarkapp.com/email", { method: "POST", headers: { "X-Postmark-Server-Token": E.apiKey, "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ From: E.from, To: to, Subject: subject, TextBody: body, MessageStream: "outbound" }) });
+    else throw new Error("EMAIL_PROVIDER desconhecido: " + E.provider);
+    if (!r.ok) throw new Error("HTTP " + r.status + " " + (await r.text()).slice(0, 200));
+    ctx2.db.run("UPDATE emails SET status = 'sent', sent_at = ? WHERE id = ?", ctx2.now(), id);
+  } catch (e) {
+    ctx2.db.run("UPDATE emails SET status = 'failed', error = ? WHERE id = ?", String(e.message).slice(0, 500), id);
+    ctx2.log("Email falhou", template, to, e.message);
+  }
+  return { id, subject, body };
+}
+var mail = (ctx2, to, template, vars) => {
+  sendEmail(ctx2, to, template, vars).catch((e) => ctx2.log("Email", e.message));
+};
+function audit(ctx2, actor, action, target, details, reason) {
+  ctx2.db.run(
+    "INSERT INTO audit_log (at, actor_id, actor_email, action, target_type, target_id, reason, details, ip) VALUES (?,?,?,?,?,?,?,?,?)",
+    ctx2.now(),
+    actor && actor.id || null,
+    actor && actor.email || (typeof actor === "string" ? actor : null),
+    action,
+    target && target[0] || null,
+    target && target[1] || null,
+    reason || null,
+    details ? typeof details === "string" ? details : JSON.stringify(details) : null,
+    actor && actor.ip || null
+  );
+}
+var ROLES = { owner: "Administrador principal", finance: "Financeiro", support: "Suporte" };
+var P = {
+  "dashboard.view": ["owner", "finance", "support"],
+  "customers.view": ["owner", "finance", "support"],
+  "customers.edit": ["owner", "support"],
+  "customers.suspend": ["owner", "support"],
+  "customers.block": ["owner"],
+  "orders.view": ["owner", "finance", "support"],
+  "payments.validate": ["owner", "finance"],
+  "payments.refund": ["owner", "finance"],
+  "payments.events": ["owner", "finance"],
+  "licenses.view": ["owner", "finance", "support"],
+  "licenses.manage": ["owner", "support"],
+  // suspender/reativar, desativar computador, mudança de computador
+  "licenses.revoke": ["owner"],
+  "licenses.issue": ["owner"],
+  // ofertas, lotes, demonstrações
+  "subscriptions.manage": ["owner", "finance"],
+  // prolongar, aprovar renovações, cancelar renovação
+  "settings.view": ["owner", "finance"],
+  "settings.edit": ["owner"],
+  "texts.edit": ["owner"],
+  "texts.publish": ["owner"],
+  "staff.manage": ["owner"],
+  "audit.view": ["owner"],
+  "emails.view": ["owner", "support"]
+};
+var can = (user, perm) => !!user && (P[perm] || []).includes(user.role);
+var permsOf = (role) => Object.keys(P).filter((k) => P[k].includes(role));
+function need(user, perm) {
+  if (!can(user, perm)) fail(403, "Não tens permissão para esta operação.", "SEM_PERMISSAO");
+}
+function createSession(ctx2, user, req, mfaOk) {
+  const token2 = randomToken(32), now = ctx2.now();
+  ctx2.db.run("INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen_at, ip, ua, mfa_ok) VALUES (?,?,?,?,?,?,?,?)", sha256(token2), user.id, now, now + ctx2.cfg.sessionDays * 864e5, now, req.ip, String(req.headers["user-agent"] || "").slice(0, 200), mfaOk ? 1 : 0);
+  return token2;
+}
+function sessionCookie(ctx2, token2, maxAgeS) {
+  return `mm_s=${token2}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeS === void 0 ? ctx2.cfg.sessionDays * 86400 : maxAgeS}${ctx2.cfg.test ? "" : "; Secure"}`;
+}
+var fmtMoney = (cents, cur) => {
+  const v = cents / 100;
+  const s = v.toLocaleString("pt-PT", { minimumFractionDigits: cur === "AOA" ? 0 : 2, maximumFractionDigits: cur === "AOA" ? 0 : 2 });
+  return cur === "USD" ? `US$${s}` : cur === "EUR" ? `${s} €` : `${s} Kz`;
+};
+function annualSaving(ctx2) {
+  const m = ctx2.db.get("SELECT price_usd_cents p FROM plans WHERE id = 'monthly'"), a = ctx2.db.get("SELECT price_usd_cents p FROM plans WHERE id = 'annual'");
+  if (!m || !a) return null;
+  return Math.round((1 - a.p / (12 * m.p)) * 1e3) / 10;
+}
+function quote(ctx2, plan, method, country) {
+  const cur = method === "bank_pt" ? getSetting(ctx2, "bank_pt").currency || "EUR" : method === "bank_ao" ? getSetting(ctx2, "bank_ao").currency || "AOA" : "USD";
+  const rates = getSetting(ctx2, "currencies").rates || {};
+  let fx = 1;
+  if (cur !== "USD") {
+    fx = rates[cur] && rates[cur].rate;
+    if (!fx || fx <= 0) fail(400, `Câmbio USD→${cur} ainda não configurado. Escolhe outro método de pagamento.`, "CAMBIO_EM_FALTA");
+  }
+  const round = cur === "AOA" ? 100 : 1;
+  const base = Math.round(plan.price_usd_cents * fx / round) * round;
+  const tx = getSetting(ctx2, "taxes"), rule = (tx.rules || []).find((r) => r.country === country);
+  const rate = rule ? +rule.rate : 0;
+  const tax = tx.mode === "included" ? 0 : Math.round(base * rate / 100 / round) * round;
+  return { currency: cur, fx, net_cents: base, tax_cents: tax, tax_rate: rate, tax_label: rule ? rule.label : null, tax_mode: tx.mode, total_cents: base + tax, usd_cents: plan.price_usd_cents };
+}
+
+// server/src/server.js
+import http from "node:http";
+import path7 from "node:path";
+import { URL } from "node:url";
 
 // server/src/jobs.js
 function runJobs(ctx2) {

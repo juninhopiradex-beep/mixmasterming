@@ -26,6 +26,12 @@ services:
         sync: false
       - key: ADMIN_INITIAL_PASSWORD
         sync: false
+      # repor o acesso do administrador (aplica-se uma vez; troca obrigatória no 1.º acesso) — apaga depois
+      - key: ADMIN_RESET_PASSWORD
+        sync: false
+      # beta testers: utilizador:hash[:AAAA-MM-DD] separados por espaço (só hashes, nunca palavras-passe)
+      - key: BETA_ACESSOS
+        sync: false
       - key: EMAIL_PROVIDER
         value: outbox
       - key: EMAIL_API_KEY

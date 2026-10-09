@@ -40,6 +40,24 @@ LICENSE_PUBLIC_KEY: 'MFkw…',                         // Administração → Co
 ```
 Se a app não estiver em `https://<utilizador>.github.io`, junta o domínio dela em `CORS_ORIGINS` no servidor.
 
+## Administrador e beta testers (Render → mixmind-loja → Environment)
+
+**Ver a palavra-passe inicial:** `ADMIN_INITIAL_PASSWORD` → ícone do olho. Só serve até ao primeiro acesso — depois vale a que escolheste.
+Mudar `ADMIN_INITIAL_PASSWORD` mais tarde **não** altera um administrador que já existe.
+
+**Repor o acesso do administrador** (palavra-passe esquecida, ou mudar o email de entrada):
+1. `ADMIN_EMAIL` = o email com que queres entrar; `ADMIN_RESET_PASSWORD` = uma palavra-passe temporária (12+ caracteres).
+   Se também perdeste o telemóvel da verificação em dois passos, junta `ADMIN_RESET_2FA` = `1`.
+2. **Save Changes** → o serviço reinicia. Entra em `/entrar` com esse email e a temporária; o site obriga a escolher uma nova.
+3. Apaga `ADMIN_RESET_PASSWORD` (e `ADMIN_RESET_2FA`). Aplica-se uma vez por valor: reiniciar não volta a repor.
+
+**Beta testers** — `BETA_ACESSOS`, entradas `utilizador:hash[:AAAA-MM-DD]` separadas por um espaço:
+- gera cada entrada com `node server/scripts/beta-hash.mjs beta01 [AAAA-MM-DD]` (compacta: `server/bin/beta-hash.mjs`):
+  mostra a palavra-passe **uma vez** (entrega-a ao beta tester) e a linha para colar — o Render só guarda o hash;
+- o beta tester entra na app com `beta01` (sem email) e recebe uma licença de oferta presa a **um** computador
+  (para mudar de computador: Admin → Licenças → libertar o computador);
+- retirar a entrada suspende a conta no arranque seguinte; voltar a pôr reativa; uma data passada → modo de demonstração.
+
 ## Verificar
 1. Abre a app → aparece o ecrã **Entrar**.
 2. Entra com a conta de administrador → acesso completo (conta da equipa).
