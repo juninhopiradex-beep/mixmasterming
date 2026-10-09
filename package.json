@@ -1,29 +1,15 @@
 {
   "name": "mixmind-by-piradex",
   "private": true,
-  "description": "MIXMIND by Piradex — app (sem build) + loja/licenças (server/, Node 22 sem dependências). Este package.json serve para testes e para arrancar a loja.",
+  "version": "1.8.0",
   "type": "module",
-  "scripts": {
-    "test": "node tests/dsp.test.mjs && node tests/tune.test.mjs && node tests/e2e.test.mjs && node tests/cloud.test.mjs && npm run test:loja",
-    "test:dsp": "node tests/dsp.test.mjs",
-    "test:tune": "node tests/tune.test.mjs",
-    "test:e2e": "node tests/e2e.test.mjs",
-    "test:cloud": "node tests/cloud.test.mjs",
-    "test:loja": "node --no-warnings server/test/flows.test.mjs && node --no-warnings server/test/pages.test.mjs && node --no-warnings tests/license.test.mjs && node --no-warnings server/test/examples.test.mjs",
-    "test:loja:fluxos": "node --no-warnings server/test/flows.test.mjs",
-    "test:loja:paginas": "node --no-warnings server/test/pages.test.mjs",
-    "test:licenca-app": "node --no-warnings tests/license.test.mjs",
-    "loja": "node --no-warnings server/src/index.js",
-    "loja:backup": "node --no-warnings server/scripts/backup.mjs",
-    "loja:demo": "node --no-warnings server/scripts/seed-demo.mjs",
-    "bench": "node tests/bench.mjs",
-    "build:wasm": "sh wasm/build.sh",
-    "test:exemplos": "node --no-warnings server/test/examples.test.mjs"
-  },
-  "devDependencies": {
-    "playwright": "1.56.0"
-  },
+  "description": "MIXMIND by Piradex — versão compacta (app + loja/licenças). Node 22.13+ só para a loja.",
   "engines": {
     "node": ">=22.13"
+  },
+  "scripts": {
+    "loja": "node --no-warnings server/bin/loja.mjs",
+    "loja:backup": "node --no-warnings server/bin/backup.mjs",
+    "loja:demo": "node --no-warnings server/bin/seed-demo.mjs"
   }
 }

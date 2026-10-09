@@ -2,8 +2,8 @@
  * Pré-carrega tudo o que index.html referencia (+ codificador MP3, fontes, biblioteca de estilos e ícones).
  * Navegação: rede primeiro (para receber atualizações), cache se estiver offline. Ficheiros: cache primeiro.
  * Pedidos a outros domínios (loja/licenças, Supabase) nunca passam pela cache. */
-const CACHE = 'mixmind-1.8';
-const EXTRA = ['./', 'index.html', 'manifest.webmanifest', 'js/vendor/lame.min.js', 'styles/library.json', 'assets/favicon.svg', 'assets/icon-192.png', 'assets/icon-512.png', 'assets/fonts/Geist-Variable.woff2', 'assets/fonts/GeistMono-Variable.woff2'];
+const CACHE = 'mixmind-1.8-compacto';
+const EXTRA = ['./', 'index.html', 'manifest.webmanifest', 'js/vendor/lame.min.js', 'styles/library.json', 'assets/favicon.svg', 'assets/icon-192.png', 'assets/icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
