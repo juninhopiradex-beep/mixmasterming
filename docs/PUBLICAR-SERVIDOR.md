@@ -1,6 +1,6 @@
 # Pôr a loja e o login online
 
-A app no GitHub Pages é estática: **o login, as contas e as licenças precisam do servidor da loja a correr** num sítio com HTTPS e disco persistente (a base de dados SQLite e a chave das licenças ficam em `DATA_DIR`). Escolhe uma das opções.
+O servidor da loja serve **tudo no mesmo domínio**: a loja na raiz (`www.oteudominio.com`) e a aplicação em `/app/` (`www.oteudominio.com/app`). Precisa de HTTPS e de disco persistente (a base de dados SQLite e a chave das licenças ficam em `DATA_DIR`). O GitHub serve só para guardar o código. Escolhe uma das opções.
 
 ## Opção A — Render (mais simples, ~US$7/mês + disco)
 1. Em render.com → New → **Blueprint** → liga o repositório do GitHub. O ficheiro `render.yaml` cria o serviço com disco persistente em `/data`.
@@ -31,14 +31,23 @@ WantedBy=multi-user.target
 HTTPS automático com Caddy (`/etc/caddy/Caddyfile`): `loja.o-teu-dominio.com { reverse_proxy 127.0.0.1:8790 }`.
 `sudo systemctl enable --now mixmind caddy`. Cópias de segurança: `npm run loja:backup` num cron diário (guarda-as cifradas fora do servidor).
 
-## Depois — ligar a app (GitHub)
-No `config.js` do repositório:
-```js
-EXIGIR_LOGIN: true,
-LICENSE_API: 'https://o-endereco-da-loja',          // sem barra no fim
-LICENSE_PUBLIC_KEY: 'MFkw…',                         // Administração → Configurações → Licenciamento → Chave pública
-```
-Se a app não estiver em `https://<utilizador>.github.io`, junta o domínio dela em `CORS_ORIGINS` no servidor.
+## Domínio próprio (www.oteudominio.com)
+1. Render → mixmind-loja → **Settings → Custom Domains → + Add Custom Domain** → `www.oteudominio.com`
+   (o Render junta também `oteudominio.com`, que redireciona para o `www`).
+2. No painel DNS do registador:
+   - `www` → **CNAME** → `mixmind-loja.onrender.com`
+   - `@` (domínio sem www) → **ALIAS/ANAME** → `mixmind-loja.onrender.com`; se não existir esse tipo, **A** → `216.24.57.1`
+   - apaga registos **AAAA** nesses nomes. Depois **Verify** no Render (o certificado HTTPS é automático).
+3. Render → **Environment**: `PUBLIC_URL` = `https://www.oteudominio.com` (sem barra no fim) e `APP_URL` = `/app/`. Save → reinicia.
+4. Pronto: loja em `https://www.oteudominio.com`, app em `https://www.oteudominio.com/app`. Não é preciso mexer no `config.js`:
+   o servidor completa-o com o próprio endereço e a chave pública.
+
+**Deixar de usar o GitHub Pages:** GitHub → repositório → **Settings → Pages** → *Unpublish site* (ou *Source: None*).
+O fluxo `.github/workflows/pages.yml` já só corre manualmente. O repositório pode passar a **privado**
+(Settings → General → Change visibility); o Render continua a publicar a partir dele.
+
+**App noutro sítio (opcional):** se um dia a app estiver noutro domínio, `APP_URL` = endereço completo dela e,
+no `config.js` dela, `LICENSE_API` = endereço da loja e `LICENSE_PUBLIC_KEY` = Administração → Configurações → Licenciamento.
 
 ## Administrador e beta testers (Render → mixmind-loja → Environment)
 

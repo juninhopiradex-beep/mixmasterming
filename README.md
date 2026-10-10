@@ -8,7 +8,7 @@ Esta é a **versão compacta**: o mesmo código da versão completa, agrupado em
 
 | Ficheiro | O quê |
 |---|---|
-| `index.html`, `mixmind.js`, `mixmind.css` | a aplicação (GitHub Pages) |
+| `index.html`, `mixmind.js`, `mixmind.css` | a aplicação — servida pela loja em `/app/` (ex.: www.oteudominio.com/app) |
 | `acessos.json`, `acessos.html` | **quem pode entrar na app** sem servidor (modo GitHub): gera os acessos em acessos.html e cola em acessos.json |
 | `config.js` | configuração editável: Supabase (opcional) e licenças (`LICENSE_API`, `LICENSE_PUBLIC_KEY`) |
 | `sw.js`, `manifest.webmanifest`, `assets/` | app instalável e offline, ícones |
@@ -22,7 +22,7 @@ Esta é a **versão compacta**: o mesmo código da versão completa, agrupado em
 | `Dockerfile`, `render.yaml` | publicar o servidor (Render ou qualquer serviço com Docker) |
 
 ## Publicar
-- **App:** GitHub Pages (o workflow `.github/workflows/pages.yml` publica tudo exceto `server/`). Com `EXIGIR_LOGIN: true` (por omissão) a app **só abre depois de entrar com uma conta** — e fica em “Acesso reservado” até indicares o servidor em `LICENSE_API`. Para abrir sem contas: `EXIGIR_LOGIN: false`.
+- **Tudo no mesmo servidor (Render):** a loja fica na raiz (`www.oteudominio.com`) e a app em `/app/` (`www.oteudominio.com/app`). O `config.js` da app é completado pelo servidor (login, licenças e chave pública do próprio servidor) — mudar de domínio só exige mudar `PUBLIC_URL`. A app só abre depois de entrar com uma conta. O GitHub serve apenas para guardar o código (o GitHub Pages já não é usado).
 - **Login, contas e licenças:** passo a passo em `docs/PUBLICAR-SERVIDOR.md`.
 - **Loja:** precisa de um servidor Node com HTTPS (VPS, Render…). `npm run loja` com as variáveis de `server/.env.example`. A palavra-passe inicial do administrador define-se **só** no ambiente do servidor (`ADMIN_INITIAL_PASSWORD`), troca-se no 1.º acesso e depois apaga-se. Ver `docs/LICENCIAMENTO.md`.
 

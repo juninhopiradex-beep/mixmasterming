@@ -27,7 +27,10 @@ function loadConfig(overrides = {}) {
     test: mode === "test",
     port: +(env.PORT || 8790),
     publicUrl: (env.PUBLIC_URL || `http://localhost:${env.PORT || 8790}`).replace(/\/+$/, ""),
-    appUrl: (env.APP_URL || "https://juninhopiradex-beep.github.io/mixmasterming/").trim(),
+    // endereço da app: por omissão /app/ neste mesmo servidor (relativo a PUBLIC_URL); pode ser um endereço completo
+    appUrl: (env.APP_URL || "/app/").trim(),
+    appDir: env.APP_DIR || "",
+    // pasta dos ficheiros da app (vazio = a pasta acima de server/)
     corsOrigins: (env.CORS_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
     dataDir: path.resolve(env.DATA_DIR || path.join(ROOT, "data")),
     secretKey: env.SECRET_KEY || "",
@@ -48,6 +51,7 @@ function loadConfig(overrides = {}) {
     if (!cfg2.secretKey || cfg2.secretKey.length < 32) throw new Error("SECRET_KEY em falta ou demasiado curta (mín. 32 caracteres) — obrigatória em produção");
     if (!cfg2.publicUrl.startsWith("https://")) throw new Error("PUBLIC_URL tem de ser https:// em produção");
   }
+  if (cfg2.appUrl.startsWith("/")) cfg2.appUrl = cfg2.publicUrl + cfg2.appUrl;
   if (!cfg2.secretKey) cfg2.secretKey = "modo-de-testes-chave-local-nao-usar-em-producao-0000";
   return cfg2;
 }
@@ -583,6 +587,7 @@ function seed(ctx2) {
     db.run("INSERT INTO audit_log (at, actor_email, action, target_type, details) VALUES (?,?,?,?,?)", now, "sistema", "admin.bootstrap", "user", "Administrador inicial criado a partir de ADMIN_EMAIL/ADMIN_INITIAL_PASSWORD (troca obrigatória no primeiro acesso).");
     ctx2.log("Administrador inicial criado para", cfg2.adminEmail, "— troca de palavra-passe obrigatória no primeiro acesso.");
   }
+  if (!/github\.io/.test(cfg2.appUrl)) db.run("UPDATE versions SET url_web = ? WHERE url_web LIKE '%.github.io/%'", cfg2.appUrl);
   adminReset(ctx2);
   betaAccounts(ctx2);
 }
@@ -800,7 +805,7 @@ function quote(ctx2, plan, method, country) {
 
 // server/src/server.js
 import http from "node:http";
-import path7 from "node:path";
+import path8 from "node:path";
 import { URL } from "node:url";
 
 // server/src/jobs.js
@@ -1231,10 +1236,10 @@ function form(obj, prefix, out = []) {
   }
   return out.join("&");
 }
-async function api(ctx2, method, path8, body) {
+async function api(ctx2, method, path9, body) {
   const c = cred(ctx2);
   if (!c.secretKey) fail(503, "Pagamentos por cartão ainda não configurados.", "PRESTADOR_NAO_CONFIGURADO");
-  const r = await fetch(c.apiBase + path8, { method, headers: { Authorization: "Bearer " + c.secretKey, "Content-Type": "application/x-www-form-urlencoded", "Stripe-Version": "2024-06-20" }, body: body ? form(body) : void 0 });
+  const r = await fetch(c.apiBase + path9, { method, headers: { Authorization: "Bearer " + c.secretKey, "Content-Type": "application/x-www-form-urlencoded", "Stripe-Version": "2024-06-20" }, body: body ? form(body) : void 0 });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) fail(502, "Stripe: " + (j.error && j.error.message || r.status), "PRESTADOR_ERRO");
   return j;
@@ -1387,8 +1392,8 @@ async function token(ctx2) {
   tok = { v: j.access_token, exp: Date.now() + (j.expires_in || 300) * 1e3, base: c.apiBase };
   return tok.v;
 }
-async function api2(ctx2, method, path8, body) {
-  const r = await fetch(cred2(ctx2).apiBase + path8, { method, headers: { Authorization: "Bearer " + await token(ctx2), "Content-Type": "application/json", Prefer: "return=representation" }, body: body ? JSON.stringify(body) : void 0 });
+async function api2(ctx2, method, path9, body) {
+  const r = await fetch(cred2(ctx2).apiBase + path9, { method, headers: { Authorization: "Bearer " + await token(ctx2), "Content-Type": "application/json", Prefer: "return=representation" }, body: body ? JSON.stringify(body) : void 0 });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) fail(502, "PayPal: " + (j.message || j.name || r.status), "PRESTADOR_ERRO");
   return j;
@@ -2456,6 +2461,63 @@ function register6(r, ctx2) {
   });
 }
 
+// server/src/appsite.js
+import fs9 from "node:fs";
+import path7 from "node:path";
+var FILES = /* @__PURE__ */ new Set(["index.html", "portal.html", "sw.js", "manifest.webmanifest", "mixmind.js", "mixmind.css", "portal.js"]);
+var DIRS = /* @__PURE__ */ new Set(["js", "css", "assets", "styles", "wasm"]);
+var TYPES2 = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".wasm": "application/wasm" };
+var CDN = "https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com";
+var APP_CSP = [
+  "default-src 'self'",
+  `script-src 'self' 'wasm-unsafe-eval' blob: ${CDN} 'sha256-uZcjrkjRXaJdE3hSPk1FMJntyHgj58w5MWC74X9n+ok='`,
+  "worker-src 'self' blob:",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "media-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self' https: data: blob:",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "object-src 'none'"
+].join("; ");
+var appDir = (ctx2) => path7.resolve(ctx2.cfg.appDir || path7.join(ROOT, ".."));
+function configJs(ctx2) {
+  if (ctx2._appConfig) return ctx2._appConfig;
+  const f = path7.join(appDir(ctx2), "config.js");
+  const base = fs9.existsSync(f) ? fs9.readFileSync(f, "utf8") : "window.MIXMIND_CONFIG = {};";
+  const K = signingKeys(ctx2);
+  ctx2._appConfig = `${base}
+;/* servido pela loja: login, licenças e chave pública deste servidor (gerado automaticamente) */
+(function (c) { c.LICENSE_API = location.origin; c.LICENSE_PUBLIC_KEY = ${JSON.stringify(K.spki)}; if (c.EXIGIR_LOGIN === undefined) c.EXIGIR_LOGIN = true; })(window.MIXMIND_CONFIG = window.MIXMIND_CONFIG || {});
+`;
+  return ctx2._appConfig;
+}
+function serveApp(ctx2, rel, res) {
+  let p;
+  try {
+    p = decodeURIComponent(rel);
+  } catch {
+    return false;
+  }
+  if (p === "/" || p === "") p = "/index.html";
+  const parts = p.split("/").filter(Boolean);
+  if (!parts.length || parts.some((x) => x.startsWith(".") || x.includes("\\"))) return false;
+  if (p === "/config.js") {
+    send(res, 200, configJs(ctx2), { "Content-Type": TYPES2[".js"], "Cache-Control": "no-cache" });
+    return true;
+  }
+  const ok = parts.length === 1 ? FILES.has(parts[0]) : DIRS.has(parts[0]);
+  const ext = path7.extname(p).toLowerCase();
+  if (!ok || !TYPES2[ext]) return false;
+  const root = appDir(ctx2), file = path7.resolve(root, "." + p);
+  if (!file.startsWith(root + path7.sep) || !fs9.existsSync(file) || !fs9.statSync(file).isFile()) return false;
+  const fresh = ext === ".html" || ext === ".webmanifest" || parts[0] === "sw.js" || ext === ".json";
+  send(res, 200, fs9.readFileSync(file), { "Content-Type": TYPES2[ext], "Cache-Control": fresh ? "no-cache" : "public, max-age=300", ...ext === ".html" ? { "Content-Security-Policy": APP_CSP } : {} });
+  return true;
+}
+
 // server/src/server.js
 function createServer(ctx2) {
   const r = router();
@@ -2477,7 +2539,7 @@ function createServer(ctx2) {
   register4(r, ctx2);
   register5(r, ctx2);
   register6(r, ctx2);
-  const publicDir = path7.join(ROOT, "public");
+  const publicDir = path8.join(ROOT, "public");
   const licOrigins = () => new Set([...ctx2.cfg.corsOrigins, (() => {
     try {
       return new URL(ctx2.cfg.appUrl).origin;
@@ -2510,6 +2572,8 @@ function createServer(ctx2) {
       if (!isApi) {
         if (req.method !== "GET" && req.method !== "HEAD") fail(405, "Método não permitido.");
         if (url.pathname === "/teste-pagamento" && !ctx2.cfg.test) fail(404, "Não encontrado.");
+        if (url.pathname === "/app") return send(res, 301, "", { Location: "/app/" + url.search });
+        if (url.pathname.startsWith("/app/") && serveApp(ctx2, url.pathname.slice(4), res)) return;
         if (serveStatic(publicDir, url.pathname, res)) return;
         return serveStatic(publicDir, "/404", res, 404) || send(res, 404, "Não encontrado");
       }

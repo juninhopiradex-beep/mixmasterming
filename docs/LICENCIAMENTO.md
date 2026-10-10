@@ -24,7 +24,7 @@ Este documento descreve o sistema de vendas, autenticação, administração e l
 
 **Decisões principais**
 
-- **O GitHub Pages não executa servidores.** A aplicação continua no Pages e a loja precisa de um alojamento Node, por exemplo uma VPS, o Render ou o Railway. O workflow do Pages publica só a aplicação, nunca a pasta `server/`.
+- **Tudo no servidor da loja.** O GitHub Pages não executa servidores; por isso a loja corre num alojamento Node (Render, VPS…) e serve também a aplicação em `/app/`, no mesmo domínio (`www.oteudominio.com/app`). Só uma lista fechada de ficheiros da app é servida — nunca `server/`, documentação ou configuração.
 - **A loja, a área de cliente e a administração são servidas pelo próprio servidor** (mesma origem). Assim as sessões ficam em cookies `HttpOnly`, `SameSite=Lax` e `Secure`, sem tokens no `localStorage`.
 - **A aplicação só fala com `/api/v1`** (CORS limitado a `APP_URL` e `CORS_ORIGINS`, sem cookies).
 - **O cartão é pago no Stripe Checkout alojado.** O número do cartão e o CVV nunca passam pelo nosso servidor.

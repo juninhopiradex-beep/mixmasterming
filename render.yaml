@@ -20,8 +20,9 @@ services:
         generateValue: true
       - key: PUBLIC_URL
         sync: false
+      # a app é servida por este servidor em /app/ (mesmo domínio da loja)
       - key: APP_URL
-        value: https://juninhopiradex-beep.github.io/mixmasterming/
+        value: /app/
       - key: ADMIN_EMAIL
         sync: false
       - key: ADMIN_INITIAL_PASSWORD

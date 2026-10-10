@@ -25,7 +25,10 @@ function loadConfig(overrides = {}) {
     test: mode === "test",
     port: +(env.PORT || 8790),
     publicUrl: (env.PUBLIC_URL || `http://localhost:${env.PORT || 8790}`).replace(/\/+$/, ""),
-    appUrl: (env.APP_URL || "https://juninhopiradex-beep.github.io/mixmasterming/").trim(),
+    // endereço da app: por omissão /app/ neste mesmo servidor (relativo a PUBLIC_URL); pode ser um endereço completo
+    appUrl: (env.APP_URL || "/app/").trim(),
+    appDir: env.APP_DIR || "",
+    // pasta dos ficheiros da app (vazio = a pasta acima de server/)
     corsOrigins: (env.CORS_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
     dataDir: path.resolve(env.DATA_DIR || path.join(ROOT, "data")),
     secretKey: env.SECRET_KEY || "",
@@ -46,6 +49,7 @@ function loadConfig(overrides = {}) {
     if (!cfg2.secretKey || cfg2.secretKey.length < 32) throw new Error("SECRET_KEY em falta ou demasiado curta (mín. 32 caracteres) — obrigatória em produção");
     if (!cfg2.publicUrl.startsWith("https://")) throw new Error("PUBLIC_URL tem de ser https:// em produção");
   }
+  if (cfg2.appUrl.startsWith("/")) cfg2.appUrl = cfg2.publicUrl + cfg2.appUrl;
   if (!cfg2.secretKey) cfg2.secretKey = "modo-de-testes-chave-local-nao-usar-em-producao-0000";
   return cfg2;
 }
